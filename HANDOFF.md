@@ -6,11 +6,16 @@
 - **Phase:** 0 (Foundation), planning in progress
 - **Branch:** `phase-0-foundation`
 - **Last updated:** 2026-09-29
-- **Pipeline stage reached:** stage 1 (expert plan) is done: `docs/phases/phase-0/plan-v1.md`. Stage 2 (edge-case research) is running.
-- **Resume with:** `resumeFrom: "edge"` (updated again before this machine shuts down)
+- **Pipeline stage reached:** stages 1 and 2 are done and committed:
+  - `docs/phases/phase-0/plan-v1.md` (expert plan)
+  - `edge-cases-functional.md` (37 items) and `edge-cases-platform.md` (44 items)
+  - Stage 3 (replan → `docs/phases/phase-0/PLAN.md`) was running on the first machine.
+- **Resume with:** `resumeFrom: "replan"` (if `docs/phases/phase-0/PLAN.md` is committed, use `"review"` instead)
+- **Pipeline for Phase 0:** `.claude/workflows/phase-pipeline.js`, with args in `docs/phases/phase-0/pipeline-args.json`
 - **Cloud resources created so far:** none. The Supabase and Vercel projects are created during implementation.
 - **Already set up:** GitHub repo, `VERCEL_TOKEN` repo secret (Vercel scope "Karthi Labs"), Supabase org "Karthi labs".
-- **Next:** continue the Phase 0 pipeline from the stage above.
+- **Next:** finish Phase 0 with the Phase 0 pipeline. Then Phase 1 runs the **team workflow**: `docs/process/TEAM_WORKFLOW.md`, `.claude/workflows/team-pipeline.js`, and `docs/phases/phase-1/pipeline-args.json`.
+- **Optional before Phase 1:** run `gh auth refresh -s project` so the pipeline can maintain a GitHub Project board.
 
 ## How to continue on another machine
 1. Install Node (the version in `.nvmrc` once Phase 0 lands; until then the current LTS or newer), Git, GitHub CLI, and Claude Code.
