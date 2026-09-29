@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+dist-ssr/
+*.local
+
+# env and secrets
+.env
+.env.*
+!.env.example
+
+# tooling
+.vercel/
+coverage/
+playwright-report/
+test-results/
+supabase/.temp/
+supabase/.branches/
+
+# android (Capacitor, Phase 4)
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+*.keystore
+*.jks
+
+# editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.log
