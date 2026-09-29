@@ -49,8 +49,19 @@ Deferred (do not build): calendar sync, in-app AI, widgets, login/SSO.
 - The owner works from more than one machine. GitHub plus `HANDOFF.md` is the only shared state, so push often and never leave important progress only on one machine.
 - Contributions must be credited to the owner, who is earning GitHub achievements through real PRs and merges. Never add AI attribution (see above).
 
+## Team workflow (Phase 1 onward): work like a software company
+From Phase 1, every phase runs as a GitHub-native team process, described in **`docs/process/TEAM_WORKFLOW.md`** (the source of truth) and executed by `.claude/workflows/team-pipeline.js`. In short:
+- milestone + epic issue + integration branch `phase-<n>-<slug>`
+- design PR reviewed by the systems designer (blockers become `type:design` issues)
+- one issue + `feat/…` PR per work package, with a code review (verdict line, inline comments) before merge
+- QA rounds 1 and 2 file bug issues; one `fix/…` PR per bug; QA verifies and closes each issue
+- release-prep PR (CHANGELOG, HANDOFF), then the release PR to `main` gated by `gate/final-verification`
+- merge, `production` deployment, tag, and GitHub Release with generated notes; milestone and epic closed
+
+Gates are shown with labels (`gate:*`, `status:*`) and commit statuses (`gate/design-review`, `gate/code-review`, `gate/final-verification`). One account plays every role, so reviews are comment reviews that start with `Verdict: APPROVED` or `Verdict: CHANGES REQUESTED`.
+
 ## Running a phase (multi-agent pipeline)
-Each phase runs through the saved workflow `.claude/workflows/phase-pipeline.js`:
+Phase 0 runs through the saved workflow `.claude/workflows/phase-pipeline.js` (Phase 1 onward uses `team-pipeline.js`, which has the same resume options):
 1. Expert plan
 2. Two edge-case researchers
 3. Replan
