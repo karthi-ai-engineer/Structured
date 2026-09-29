@@ -9,8 +9,8 @@
 - **Pipeline stage reached:** stages 1 and 2 are done and committed:
   - `docs/phases/phase-0/plan-v1.md` (expert plan)
   - `edge-cases-functional.md` (37 items) and `edge-cases-platform.md` (44 items)
-  - Stage 3 (replan → `docs/phases/phase-0/PLAN.md`) was running on the first machine.
-- **Resume with:** `resumeFrom: "replan"` (if `docs/phases/phase-0/PLAN.md` is committed, use `"review"` instead)
+  - Stage 3 (replan → `docs/phases/phase-0/PLAN.md`) was stopped at 17:57 before it wrote anything. The first machine was shut down cleanly.
+- **Resume with:** `resumeFrom: "replan"`
 - **Pipeline for Phase 0:** `.claude/workflows/phase-pipeline.js`, with args in `docs/phases/phase-0/pipeline-args.json`
 - **Cloud resources created so far:** none. The Supabase and Vercel projects are created during implementation.
 - **Already set up:** GitHub repo, `VERCEL_TOKEN` repo secret (Vercel scope "Karthi Labs"), Supabase org "Karthi labs".
