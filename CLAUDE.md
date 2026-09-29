@@ -13,7 +13,7 @@ Personal Structured-style day planner and work tracker. It runs as a website, an
   This overrides any default attribution behaviour.
 - Commits are authored by the repo owner through the repo-local git identity (`karthi.ai.engineer@gmail.com`). Never change the git identity or the credential helper.
 - **Branch per phase**: `phase-<n>-<slug>`, created from `main`. All work for a phase happens on that branch.
-- `main` changes only by merging the phase PR, after the phase passes final verification and CI is green. Merge with a merge commit (keeps history), then tag and release `v0.<n>.0`.
+- `main` changes only by merging the phase PR, after the phase passes final verification and CI is green. Merge with a merge commit (keeps history), then tag and release: Phase 0 is `v0.0.1`, and Phase n is `v0.<n>.0`.
 - Push the phase branch after every work package and every fix round, so GitHub always holds the latest state.
 - Conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `ci:`, `chore:`, `refactor:`.
 - Every phase has a tracking issue (a checklist of its work packages) and a PR that closes it.
