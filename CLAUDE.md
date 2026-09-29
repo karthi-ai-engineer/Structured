@@ -42,4 +42,29 @@ A fresh session on another device must be able to continue from it with no other
 ## Scope
 Deferred (do not build): calendar sync, in-app AI, widgets, login/SSO.
 
+## Working agreements with the owner
+- This is a personal, single-user app. Don't add login, auth, or security hardening unless asked. Mention a trade-off once, briefly, then move on.
+- Use free tiers (Supabase, Vercel Hobby, GitHub Actions). Prefer rapid, phase-by-phase delivery.
+- Report after each phase and ask before starting the next one.
+- The owner works from more than one machine. GitHub plus `HANDOFF.md` is the only shared state, so push often and never leave important progress only on one machine.
+- Contributions must be credited to the owner, who is earning GitHub achievements through real PRs and merges. Never add AI attribution (see above).
+
+## Running a phase (multi-agent pipeline)
+Each phase runs through the saved workflow `.claude/workflows/phase-pipeline.js`:
+1. Expert plan
+2. Two edge-case researchers
+3. Replan
+4. Systems-designer approval loop
+5. Credentials preflight
+6. GitHub tracking issue
+7. One developer agent per work package
+8. QA test round with a fix loop
+9. Adversarial test round with a fix loop
+10. Final verifier
+11. Ship: PR ready, CI green, merge, deploy, release
+
+- **Start a phase**: copy the previous phase's `docs/phases/phase-<n>/pipeline-args.json`, adapt it, and run `Workflow({ name: 'phase-pipeline', args: <that JSON> })` (or pass `scriptPath: '.claude/workflows/phase-pipeline.js'`). Fill in `root`, `today`, and `envNotes` for the current machine first.
+- **Resume after switching machines**: set `resumeFrom` to the first unfinished stage (`plan | edge | replan | review | implement | test1 | test2 | final | ship`), as recorded in `HANDOFF.md`. Earlier stages are read from `docs/phases/phase-<n>/`. Use `skipWPs` for finished work packages and `reviewRoundStart` to continue review numbering.
+- **Before shutting down a machine mid-phase**: stop the workflow, commit every finished stage's docs on the phase branch, record the exact `resumeFrom` value in `HANDOFF.md`, and push.
+
 <!-- Architecture rules, commands, and code conventions are added in Phase 0. -->
