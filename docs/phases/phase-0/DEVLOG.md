@@ -496,6 +496,9 @@ npm run format; npm run verify; npm run check:commits; npm run check:leaks
 | AC 14 counts on `0001_init.sql` | as listed above |
 | `npm run verify` | exit 0: 13 test files, 504 unit tests, `src/core` coverage unchanged (99.45 / 99.13 / 100 / 99.4) |
 | `npm run check:commits` | ok |
+| CI `ci-verify` for `187f8dd` | push run 36663377120 and PR run 36663380107 both `success`. The logs show `node: v24.21.0`, `npm ci` with the Linux Supabase CLI binary (556 packages), 13 test files passed including `supabase-cli.test.mjs` (the real `supabase --version` on Linux), and `hygiene`, `core` and `commits` ok |
+| CI log leak scan (`gh run view <id> --log \| node scripts/checks/leaks.mjs --stdin`, with `.env.local` present) | `leaks: ok` for both runs |
+| Tracking issue #1 | WP5 ticked (the body passed `check:commits --text-file` and `check:leaks --files` first) |
 
 ### Deviations
 1. **New shared helper `scripts/lib/supabase-cli.mjs`.** §8.4 says the bootstrap "uses the same spawn helper as §8.3". The helper lives in its own module, so that `setup-supabase.mjs` and `supabase.mjs` share one code path and the pure parts can be unit-tested. It is not in the §4 file tree.
