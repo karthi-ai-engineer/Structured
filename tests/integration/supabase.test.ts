@@ -40,8 +40,11 @@ const clientOptions = {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
 } as const
 
-/** A LIKE pattern for the test prefix: `_` is a LIKE wildcard, so it is escaped. */
-const PREFIX_LIKE = `${PREFIX.replace(/_/g, '\\_')}%`
+/**
+ * A LIKE pattern for the test prefix. The escape character `\` and the wildcards `%` and `_`
+ * are all escaped in one pass, so the prefix always matches literally.
+ */
+const PREFIX_LIKE = `${PREFIX.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
 
 let anon: Db
 let admin: Db
