@@ -4,7 +4,7 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { REALTIME_SUBSCRIBE_STATES } from '@supabase/supabase-js'
-import { settingsKey, taskKeys } from '@/data/queries/keys'
+import { settingsKey, settingsMutationKey, taskKeys, taskMutationKey } from '@/data/queries/keys'
 import { supabase } from '@/data/supabase'
 
 export function useRealtimeSync(): void {
@@ -15,11 +15,17 @@ export function useRealtimeSync(): void {
     if (!db) return
     const channel = db
       .channel('app-sync')
+      // While this device still has writes in flight, their own settle refetches afterwards;
+      // refetching now would briefly show the old values.
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
-        void qc.invalidateQueries({ queryKey: taskKeys.all })
+        if (qc.isMutating({ mutationKey: taskMutationKey }) === 0) {
+          void qc.invalidateQueries({ queryKey: taskKeys.all })
+        }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'settings' }, () => {
-        void qc.invalidateQueries({ queryKey: settingsKey })
+        if (qc.isMutating({ mutationKey: settingsMutationKey }) === 0) {
+          void qc.invalidateQueries({ queryKey: settingsKey })
+        }
       })
       .subscribe((status) => {
         if (status === REALTIME_SUBSCRIBE_STATES.SUBSCRIBED) void qc.invalidateQueries()

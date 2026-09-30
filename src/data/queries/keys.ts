@@ -9,6 +9,11 @@ export const taskKeys = {
 
 export const settingsKey = ['settings'] as const
 
+/** Mutation keys: they let a settling write (or a realtime echo) see whether other writes of
+ *  the same kind are still in flight, and refetch only once the last one has settled. */
+export const taskMutationKey = ['tasks'] as const
+export const settingsMutationKey = ['settings'] as const
+
 export type TaskListRef = { kind: 'day'; date: ISODate } | { kind: 'inbox' }
 
 /** Which list a cached query key holds, or null for keys that are not task lists. */

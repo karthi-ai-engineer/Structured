@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { Task } from '@/core/tasks'
 import { createQueryClient } from '@/data/queries/client'
 import { listOfKey, taskKeys } from '@/data/queries/keys'
-import { newTask, writeTaskToCache } from '@/data/queries/tasks'
+import { newTask, settleTasks, writeTaskToCache } from '@/data/queries/tasks'
 
 const NOW = '2026-09-30T00:00:00.000Z'
 
@@ -71,5 +71,21 @@ describe('writeTaskToCache', () => {
     qc.setQueryData(taskKeys.day('2026-10-01'), undefined)
     writeTaskToCache(qc, 'a', task({ id: 'a' }))
     expect(qc.getQueryData(taskKeys.day('2026-10-01'))).toBeUndefined()
+  })
+})
+
+describe('settleTasks', () => {
+  it('refetches only when the last pending task mutation settles', async () => {
+    const qc = createQueryClient()
+    const invalidate = vi.spyOn(qc, 'invalidateQueries').mockResolvedValue()
+    const pending = vi.spyOn(qc, 'isMutating')
+
+    pending.mockReturnValue(2) // another write is still in flight
+    await settleTasks(qc)
+    expect(invalidate).not.toHaveBeenCalled()
+
+    pending.mockReturnValue(1) // only the settling write itself
+    await settleTasks(qc)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: taskKeys.all })
   })
 })
