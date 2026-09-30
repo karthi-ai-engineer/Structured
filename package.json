@@ -14,11 +14,18 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "lint": "eslint . --max-warnings=0",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run check:hygiene && npm run check:leaks && npm run check:commits && npm run check:core",
+    "check:hygiene": "node scripts/checks/hygiene.mjs",
+    "check:leaks": "node scripts/checks/leaks.mjs",
+    "check:commits": "node scripts/checks/commits.mjs",
+    "check:core": "node scripts/checks/core-node.mjs",
+    "verify": "npm run typecheck && npm run lint && npm run format:check && npm run test:coverage && npm run build && npm run check",
+    "env:check": "node scripts/lib/env-file.mjs check"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
