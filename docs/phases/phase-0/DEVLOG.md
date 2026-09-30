@@ -265,3 +265,141 @@ gh run view <id> --log | node scripts/checks/leaks.mjs --stdin          # every 
 - Without `.env.local`, `check:leaks` uses the generic patterns only. Once WP5 creates `.env.local`, the same command also checks the real values, and `.vercel/project.json` after WP7.
 - Never paste key-shaped strings or trailer lines into files, even as examples. Build them at runtime, as the tests do.
 - The unit tests under `scripts/` spawn `node` and write only to `os.tmpdir()`.
+
+---
+
+## WP4: `src/core/dates.ts` and tests
+
+**Date:** 2026-09-30 (UTC+9). **Branch:** `phase-0-foundation`. **Tracking issue:** #1. **PR:** #2 (draft).
+
+### What was done
+- **Dependencies:** `date-fns` 4.4.0 and `@date-fns/tz` 1.5.0 (runtime `dependencies`, the latest releases on 2026-09-30).
+- **`src/core/dates.ts`** (commit `feat: add time-zone-aware date helpers in core`). It has the full §6.1 API:
+  - zones: `isValidTimeZone`, `assertTimeZone`, `normalizeTimeZone`
+  - calendar: `isISODate`, `parseISODate`, `addDays`, `diffDays`, `dayOfWeek`, `toWeekStart`, `startOfWeek`, `weekRange`
+  - clock: `todayIn`, `nowMinutesIn`, `msUntilNextDayIn`
+  - times: `isTime`, `toMinutes`, `fromMinutes`, `addMinutesToTime`
+  - instants: `zonedDateTimeToInstant`, `startOfDayInstant`
+  - display: `formatTime`, `formatDuration`, `formatDateLabel`
+  - types and constants: `ISODate`, `TimeFormat`, `WeekStart`, `TimeOptions`, `MINUTES_PER_DAY`, `MIN_ISO_DATE`, `MAX_ISO_DATE`, plus the named return types `WeekRange` and `ShiftedTime` (deviation 5)
+
+  How it works:
+  - **Zone offsets are exact.** They come from Intl wall-clock parts (`formatToParts`, `hourCycle: 'h23'`, one cached formatter per zone spelling), to the second. This replaces `tzOffset()`/`TZDate`; see deviation 1.
+  - **Wall time to instant** follows the plan's algorithm: take the offsets 36 h before and after, keep the candidates whose own offset matches, and choose the earlier one. A wall time in a gap moves forward by the gap.
+  - **Day starts** are a separate internal helper (`dayStarts`), used by `startOfDayInstant` and `msUntilNextDayIn` (deviations 3 and 4).
+  - **Calendar maths** is `Date.UTC` arithmetic on the calendar day, so it never depends on the process zone. The range 1900-01-01 to 2999-12-31 is enforced everywhere.
+  - **Times** accept `HH:mm`, `HH:mm:ss` and `HH:mm:ss.f...` (seconds are floored). `24:00` (also with `:00` and zero fractions) is accepted only with `{ endOfDay: true }`.
+  - **Display is Intl-free:** `formatTime` and `formatDuration` are built by hand, and `formatDateLabel` uses date-fns with the `enUS` locale on `new TZDate(y, m - 1, d, 'UTC')`.
+  - **Errors:** every invalid input raises a `RangeError` that names the function, the problem and the input (truncated to 40 characters). The `is*` guards never throw, even for non-string input.
+  - **Purity:** no module-level side effects (the formatter cache fills lazily). The file imports only `date-fns`, `date-fns/locale/en-US` and `@date-fns/tz`.
+  - The file header states the wall-clock timeline rule (F18) and the DST resolution rule.
+- **Tests** (commit `test: cover date helpers across DST and time zones`). There are 5 files and 320 tests; with `environment.test.ts`, `src/core` has 323:
+
+  | File | Tests | Covers |
+  |---|---|---|
+  | `dates.api.test.ts` | 9 | `expectTypeOf` on every export's signature, the exact runtime export list, constant values and literal types |
+  | `dates.zone.test.ts` | 89 | the `todayIn`/`nowMinutesIn`, `zonedDateTimeToInstant`, `startOfDayInstant` and `msUntilNextDayIn` tables; zone validation; invalid input; the one default-clock test (`vi.useFakeTimers()` + `vi.setSystemTime`) |
+  | `dates.time.test.ts` | 100 | `toMinutes`, `isTime` (agrees with `toMinutes` for every input and 4 option shapes), `fromMinutes` (with the 0..1440 round trip), `addMinutesToTime` |
+  | `dates.calendar.test.ts` | 82 | `isISODate`, `parseISODate`, `addDays`, `diffDays`, `dayOfWeek`, `toWeekStart`, `weekRange`/`startOfWeek` (with a sweep of 60 days × 7 week starts) |
+  | `dates.format.test.ts` | 40 | `formatTime`, `formatDuration`, `formatDateLabel` (with process-zone independence) |
+
+  Every call passes an explicit instant. The only exception is the single default-clock test.
+- **`vitest.config.ts`:** added `coverage.thresholds` `{ lines: 95, statements: 95, functions: 100, branches: 90 }` (§5.7).
+
+### §13.1 rows → tests
+Every row of the §13.1 `dates.*` tables is a test case. Rows written as "A / B" are two cases. The extra rows are listed in brackets.
+
+| §13.1 table | Rows in the plan | Where |
+|---|---|---|
+| `todayIn` / `nowMinutesIn` | 17 rows = 26 instants | `dates.zone` `it.each` (all 26) [plus alias spelling, seconds floored, Dublin 1910 and range bounds] |
+| `zonedDateTimeToInstant` | 11 | `dates.zone` `it.each` (all 11) [plus Santiago's repeated 23:30, St_Johns' repeated midnight, seconds floored, Dublin 1910 and `2999-12-31 24:00`] |
+| `startOfDayInstant('2026-09-30', 'Asia/Tokyo')` | 1 | `dates.zone` `startOfDayInstant` table [plus Santiago, Toronto 1919, St_Johns 2010 and Apia 2011] |
+| `msUntilNextDayIn` | 3 | `dates.zone` `it.each` (all 3) [plus Santiago's gap and repeated hour, St_Johns 2010 ×3, Toronto 1919, Apia 2011 and UTC edges] |
+| zone validation (7 `isValidTimeZone`, 2 `normalizeTimeZone`) | 9 | `dates.zone` `time-zone validation` [plus `'Asia/Kolkata '`, `'+0530'`, the U+2212 offset, `Etc/GMT-14` and `America/Nuuk`] |
+| errors (3) and default clock (1) | 4 | `dates.zone` `invalid input` and `default clock` |
+| `toMinutes` (10 values, 12 RangeErrors) | 22 | `dates.time` `valid` and `invalid` lists [with extras] |
+| `fromMinutes` (4 values, 5 RangeErrors, property) | 10 | `dates.time` |
+| `addMinutesToTime` (5 rows, non-integer) | 6 | `dates.time` [plus 5 rows and the largest safe delta] |
+| `isTime` agreement | 1 | `dates.time` |
+| `isISODate` (3 accepted, 10 rejected) | 13 | `dates.calendar` [with extras] |
+| `addDays` (7 rows, 5 RangeErrors) | 12 | `dates.calendar` [with extras] |
+| `diffDays`, `dayOfWeek` | 4 | `dates.calendar` |
+| `weekRange` (3 rows, year boundary, self start, 7 consecutive days, `toWeekStart(7)`/`(1.5)`, `startOfWeek` agreement) | 8 | `dates.calendar` |
+| `formatTime` (5 rows, out of range) | 6 | `dates.format` |
+| `formatDuration` (9 rows, 3 RangeErrors) | 12 | `dates.format` |
+| `formatDateLabel` (default, pattern, St_Johns) | 3 | `dates.format` |
+
+### Research done for this WP (scratch scripts, not committed)
+1. **`@date-fns/tz` 1.5.0 `tzOffset()`**, read in `node_modules/@date-fns/tz/tzOffset/index.js` and probed on Node 26.3.1:
+   - It parses Intl's `longOffset` string, and `calcOffset` takes its sign from the hours part. `-00:25:21` has hours `-00` = 0, so the result is **positive**. `tzOffset('Europe/Dublin', 1910-06-01T12:00Z)` returns `25.35`, although Dublin Mean Time was UTC-00:25:21. `TZDate` inherits the error: it reads 12:25:21 where the true wall time is 11:34:39.
+   - LMT offsets with seconds come back as fractional minutes (`Asia/Kolkata` 1900 gives `321.1666...`), so the plan's `tzOffset(...) * 60_000 === wall - i` check depends on floating-point luck.
+2. **Transition scan over all 419 Intl zones plus `UTC`, 1900 to 2039** (offsets from `formatToParts`; sampled every 6 h, then every 24 h; each transition found by binary search to the second):
+   - 26,733 transitions. **None are within 72 h of each other**, so the ±36 h probes always bracket the nearest transition (`PROBE_MS`).
+   - **69 backward transitions cross midnight** after midnight was already shown, so midnight happens twice. Examples: America/St_Johns, America/Goose_Bay and America/Moncton fell back at 00:01 from 1987 to 2010, Antarctica/Casey in 2010, Pacific/Guam and Pacific/Saipan in 1969, and America/Phoenix and America/Creston in 1944. Here the plan's `startOfDayInstant(tomorrow) - now` returns a **negative** value when `now` lies between the two midnights (deviation 4).
+   - **2 forward gaps strictly straddle midnight:** America/Toronto and America/Nassau on 1919-03-30 (23:30 jumped to 00:30). Here "00:00 moved forward by the gap" (01:00) is 30 minutes after the real start of the day (deviation 3).
+3. **Intl zone spellings** (Node 26.3.1):
+   - lower case, `US/Eastern`, `GMT` and `Etc/GMT+0` are accepted and canonicalised
+   - `+0530` and `+05` are accepted as offsets, and so is **U+2212 MINUS SIGN + `05:30`**, which resolves to `-05:30`. That is why `isValidTimeZone` also checks the **resolved** name.
+   - padded, empty, `Z`, `GMT+5`, `UTC+5` and `Factory` are rejected
+
+### Commands run
+```
+gh api user --jq .login; git config user.email; git pull --ff-only          # opening ritual
+netstat -ano | grep -E ":5173 |:4173 "                                       # ports free
+npm view date-fns version; npm view @date-fns/tz version                    # 4.4.0 / 1.5.0
+npm install date-fns@^4.4.0 @date-fns/tz@^1.5.0
+node ./probe*.tmp.mjs; node ./scan*.tmp.mjs                                 # research above; files deleted
+npx vitest run --coverage src/core
+npm run format; npm run typecheck; npx eslint . --max-warnings=0; npm run format:check
+npm run check:core
+grep -rn "from '@/" src/core; grep -rnE "from '\.{1,2}/[^']*'" src/core --include=*.ts | grep -v "\.ts'"
+npm run verify
+npm run check:commits; npm run check:leaks
+git push origin phase-0-foundation
+gh run list -b phase-0-foundation; gh run view <id> --log | node scripts/checks/leaks.mjs --stdin
+```
+
+### Verification results
+| Check | Result |
+|---|---|
+| `npm run test:coverage` (thresholds 95/95/100/90) | pass. `dates.ts`: **99.45 % statements (184/185), 99.13 % branches (114/115), 100 % functions (45/45), 99.4 % lines (168/169)**. The one uncovered line is the unreachable safety throw in `msUntilNextDayIn` (see the notes for testers) |
+| All unit tests | 10 files, 438 tests pass (323 in `src/core`) |
+| Every §13.1 row is a test | yes, see the table above |
+| `npm run check:core` | `ok src/core/dates.ts`, then `core: ok (1 module(s) load in plain Node v26.3.1)` |
+| `dates.ts` imports | only `@date-fns/tz`, `date-fns` and `date-fns/locale/en-US` |
+| AC 10 greps (no `@/`, every relative import ends in `.ts`) | print nothing (`dates.ts` has no relative imports; the tests use `../dates.ts`) |
+| `npm run lint` (`--max-warnings=0`), `typecheck`, `format:check`, `build` | pass |
+| `npm run verify` | exit 0 |
+| `npm run check:commits` / `check:leaks` | ok (26 commits checked) |
+| Negative probe: `offsetMs` swapped for the plan's `tzOffset() * 60_000` (temporary, restored from a scratch copy) | exactly one test fails: "1910-06-01 12:00 in Europe/Dublin is 1910-06-01T12:25:21.000Z". After the restore all 323 pass |
+| Sources are ASCII-only | `grep -nP '[^\x00-\x7F]' src/core/dates.ts src/core/__tests__/*.ts` prints nothing. The Unicode test inputs are built with `String.fromCharCode` |
+| CI `ci-verify` for `9ce3709` | push run 36661667489 and PR run 36661670517 both `success`. Their logs show `node: v24.21.0`, `Test Files 10 passed`, the same coverage (`dates.ts` 99.45 / 99.13 / 100 / 99.4) and `ok src/core/dates.ts`. So the historical tzdata rows (Dublin 1910, Toronto 1919, St_Johns 2010, Apia 2011) also hold on Node 24's ICU |
+| CI log leak scan (`gh run view <id> --log \| node scripts/checks/leaks.mjs --stdin`) | `leaks: ok` for both runs |
+
+### Deviations
+1. **Offsets come from Intl wall-clock parts, not `tzOffset()`/`TZDate`.** §6.1 said "Implemented with tzOffset()", and that `todayIn`/`nowMinutesIn` "read the components of `new TZDate(now, tz)`". Research item 1 shows that `tzOffset` has the wrong sign for offsets between -01:00 and 00:00 (historical Dublin, Monrovia and others) and returns fractional minutes. The algorithm (±36 h probes, candidate check, earlier instant, gap fallback) is unchanged; only its offset function differs, and it is exact to the second. `TZDate` is still used, but only by `formatDateLabel` with the fixed zone `UTC`, where the bug cannot occur.
+2. **`isValidTimeZone` also rejects offsets by their resolved name.** This catches the U+2212 minus spelling (research item 3), which the input-prefix check alone misses.
+3. **`startOfDayInstant` is the real first instant of the day.** §6.1 defined it as `zonedDateTimeToInstant(date, '00:00', tz)`. The two agree for every §13.1 row, including Santiago's midnight gap. They differ only when a gap **began before** midnight (Toronto and Nassau, 1919). There the day starts at the end of the gap (00:30 EDT = 04:30Z), not at 00:00 moved forward by the gap (01:00 = 05:00Z). The end of the gap is found by a binary search on whole seconds between `wall - after` and `wall - before`. `zonedDateTimeToInstant` keeps the plan's "compatible" rule, and a test pins the difference.
+4. **`msUntilNextDayIn` uses the first start of tomorrow that is still ahead of `now`.** §6.1 gave `startOfDayInstant(addDays(todayIn(tz, now), 1), tz) - now`. Where midnight happens twice (69 transitions, research item 2), that formula returns a negative value between the two midnights. The result is now always > 0. A safety `RangeError` covers the theoretically impossible case with no start ahead.
+5. **Two extra type exports, `WeekRange` and `ShiftedTime`,** name the return types that §6.1 writes inline. They are structurally identical, and the API test also pins the inline forms.
+6. **Range rules beyond §6.1:**
+   - `todayIn` throws a `RangeError` when the local date is outside 1900-01-01 to 2999-12-31.
+   - The clock functions reject a `now` more than a day outside that range, and any non-`Date`.
+   - `addDays` and `addMinutesToTime` require **safe** integers; `addMinutesToTime` stays exact up to `Number.MAX_SAFE_INTEGER`.
+   - `startOfWeek` and `weekRange` throw when the week leaves the range (for example `weekRange('2999-12-31', 1)`).
+   - `msUntilNextDayIn` throws on 2999-12-31, which has no next day.
+7. **`formatDateLabel` passes `locale: enUS` explicitly** instead of relying on date-fns' default locale. `setDefaultOptions` anywhere in the app could otherwise change the output.
+8. **Two small checks:** `formatTime` validates `format` at runtime (`'12h'` or `'24h'`), and `toMinutes('24:00')` without `endOfDay` gets its own message, which says that `{ endOfDay: true }` is needed.
+
+### Notes for testers
+- **Unreachable safety throw.** The only uncovered line is the `RangeError` in `msUntilNextDayIn` for "no local midnight ahead". It can only be reached if two transitions fall within 72 h, and research item 2 found none from 1900 to 2039. It is kept so that the function can never return 0 or a negative value. Coverage is still far above every threshold.
+- **Canonical zone names.** Intl canonicalises names differently across runtimes: Node 26 reports `Asia/Calcutta` for `Asia/Kolkata`. Tests must never assert one exact canonical spelling (use `/^Asia\/(Kolkata|Calcutta)$/`).
+- **Historical rows** (Dublin 1910, Toronto 1919, St_Johns 2010, Apia 2011) rely on long-stable tzdata, and they pass on Node 24.21.0 (CI) and 26.3.1 (local). If a future ICU update changes one of them, the row's description names the zone and the rule.
+- **Wall-clock semantics** for Phase 1 callers:
+  - `nowMinutesIn` jumps in a gap and repeats in a repeated hour.
+  - A wall time inside a gap resolves forward.
+  - An ambiguous wall time resolves to the **earlier** instant.
+  - `startOfDayInstant` is the real start of the day.
+  - Between two midnights of a repeated midnight, `todayIn` is the earlier date again, and `msUntilNextDayIn` points at the second midnight.
+- **Vitest JSON reporter.** `npx vitest run --reporter=json` writes `.vitest/json/output.json` in the repo, and that folder is not in `.gitignore`. Delete it after use (done in this WP).
+- **The ESLint clock rule also covers the tests** under `src/core/__tests__` (no `new Date()` without arguments and no `Date.now()`). Use `new Date('<ISO>')`, `vi.setSystemTime`, or `String.fromCharCode` for Unicode inputs, so that the sources stay ASCII.
