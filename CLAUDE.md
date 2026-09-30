@@ -132,6 +132,17 @@ Enforced by ESLint (`eslint.config.js`, run by `npm run lint`) and, for `src/cor
 - `updated_at` is stamped by the database trigger (`public.touch_updated_at()`); the client never sets it.
 - Realtime (Phase 1): invalidate everything on every (re)subscribe. DELETE payloads carry only the primary key. Your own writes echo back, so dedupe by `id` + `updated_at`.
 
+## App structure (Phase 1)
+- **Domain** (`src/core/tasks.ts`, `src/core/settings.ts`): task and settings models, draft validation, day layout, pill sizing, and the optimistic `applyPatch`/`belongsTo` helpers.
+- **Data** (`src/data/`): `mappers.ts` (row ↔ domain), `repo/tasks.ts` and `repo/appSettings.ts` (codes-only errors via `DataError`), and `queries/` (TanStack Query keys, hooks with optimistic mutations, realtime sync, the `QueryClient`).
+  - Every task list is cached under `['tasks', …]`. `writeTaskToCache` moves a task across all cached lists (day ↔ inbox, delete).
+  - Mutations roll back on failure with a notice, and always refetch on settle.
+- **Features** (`src/features/`): `shell` (layout, `QueryState`, `Fab`), `timeline` (day view, week strip, task rows, `useClock`), `editor` (one dialog for the whole app, opened with `useEditor()`), `inbox`, `settings` (with `ThemeSync`).
+- **Routes:** `/` (today), `/day/YYYY-MM-DD`, `/inbox` and `/settings`. Vercel's SPA rewrite serves them all.
+- **Phone versus desktop:** under `lg`, bottom tabs, a floating add button and a bottom-sheet editor. From `lg`, a sidebar and an inbox panel next to the timeline.
+- **Safety net:** `platform/unload.ts` asks before leaving the page while a mutation is pending.
+- **Deferred to Phase 3:** recurring tasks and the default "Rise and Shine" / "Wind Down" anchors (master plan T18). Phase 1 reads only plain one-off rows (`repeat_rule` and `series_id` null).
+
 ## Database migrations
 - Files are `supabase/migrations/NNNN_<name>.sql`: four digits, sequential (`0001_init.sql`, `0002_goals.sql`, …), created by hand. **Never** run `supabase migration new` (its timestamp names sort after `0002…` and block `db push`), and never rename or edit a migration that has been applied; add a new one.
 - Apply with `npm run db:push`, and check with `npm run db:migrations`.
@@ -189,6 +200,7 @@ Run these from the repo root, in Git Bash on Windows. `npm run verify` is the fu
 | `npm run test:watch` | Unit tests in watch mode |
 | `npm run test:coverage` | Unit tests plus the `src/core` coverage thresholds (95 % lines and statements, 100 % functions, 90 % branches) |
 | `npm run test:integration` | Opt-in tests against the real database. Needs `.env.local`, never runs in CI, and touches only `__test__` rows. |
+| `npm run test:e2e` | Opt-in Playwright tests in the installed Microsoft Edge (no browser download) against the dev server on port 5173 and the real database. Never in CI. Test tasks start with `__test__`; `tests/e2e/cleanup.ts` soft-deletes any live leftovers before and after every run. Assert on loaded data (wait for `[aria-busy="true"]` to disappear) and wait for the write to be confirmed before reloading, since the UI updates optimistically. |
 | `npm run check` | The four repo checks below |
 | `npm run check:hygiene` | No BOM, valid UTF-8, no CR; lockfile native bindings for Windows, Linux and macOS; the Node and Vercel CLI pins; the `ci-verify` invariants |
 | `npm run check:leaks` | Secrets, hosts, IDs and the project name in files and commit messages. `-- --stdin` scans piped text (CI logs); `-- --files <paths>` scans given files. |
@@ -236,6 +248,8 @@ Values live only in `.env.local` (gitignored), in the Vercel project and in GitH
 - A new app key goes into all of these in one change: `.env.example`, `APP_KEYS` in `scripts/lib/env-file.mjs`, `MATRIX` in `scripts/sync-vercel-env.mjs`, and the table above.
 
 ## CI/CD flow
+
+- **Before merging a PR, wait for its CI run to exist.** Right after a push, `gh pr checks --watch` exits at once with "no checks reported". Poll until a `ci-verify` check appears, then watch it. Only `main` enforces the check through the ruleset; `phase-*` branches do not.
 1. Work happens on the phase branch `phase-<n>-<slug>` (from Phase 1: feature and fix PRs into it, see the team workflow), in small conventional commits.
 2. Push after every work package. `CI / ci-verify` runs on every push and on every PR (opened, synchronize, reopened, edited), whatever its base branch.
 3. The phase PR (`Closes #<tracking issue>`) stays a draft until the Ship stage.

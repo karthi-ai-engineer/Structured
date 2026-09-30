@@ -25,6 +25,7 @@ describe('dates.ts API', () => {
         'isValidTimeZone',
         'msUntilNextDayIn',
         'normalizeTimeZone',
+        'nowIso',
         'nowMinutesIn',
         'parseISODate',
         'startOfDayInstant',

@@ -748,14 +748,14 @@ Each phase ends with something **deployed and usable**. Work in small commits.
 - **Done when:** a blank app deploys to `https://<app>.vercel.app` and can read and write a test row in Supabase.
 
 ### Phase 1: Web MVP (size: L)
-- [ ] First app open: if there is no `settings` row, create it with the browser timezone and seed the "Rise and Shine" and "Wind Down" tasks. The app opens straight to the timeline; there is no login screen.
-- [ ] Data layer: repo functions + query hooks (`useDay`, `useInbox`) + realtime invalidation
-- [ ] Day timeline (T4, T5) with the TaskPill component, current-time line, completion (T3)
-- [ ] Week strip navigation and swipe (T6)
-- [ ] Task editor sheet: title, date, time, duration chips, color, icon picker, subtasks, notes (T1, T2)
-- [ ] Inbox list with quick add and "schedule" action (T7)
-- [ ] Responsive shell: mobile bottom tabs + FAB; desktop sidebar + inbox panel (S5)
-- [ ] Dark/light theme (S3); basic settings page (timezone, 12/24h, day start/end)
+- [x] First app open: if there is no `settings` row, create it with the browser timezone. The app opens straight to the timeline; there is no login screen. (The "Rise and Shine" and "Wind Down" anchors repeat daily, so they move to Phase 3 with recurring tasks, T18.)
+- [x] Data layer: repo functions + query hooks (`useDay`, `useInbox`) + realtime invalidation
+- [x] Day timeline (T4, T5) with the TaskPill component, current-time line, completion (T3)
+- [x] Week strip navigation and swipe (T6)
+- [x] Task editor sheet: title, date, time, duration chips, color, icon picker, subtasks, notes (T1, T2)
+- [x] Inbox list with quick add and "schedule" action (T7)
+- [x] Responsive shell: mobile bottom tabs + FAB; desktop sidebar + inbox panel (S5)
+- [x] Dark/light theme (S3); basic settings page (timezone, 12/24h, day start/end)
 - **Done when:** on desktop and phone browser, you can plan today, check tasks off, use the inbox, and an edit on one device appears on the other within about 1 s.
 
 ### Phase 2: MCP server, "Claude plans my day" (size: M)

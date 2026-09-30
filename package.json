@@ -18,6 +18,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "playwright test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run check:hygiene && npm run check:leaks && npm run check:commits && npm run check:core",
@@ -38,17 +39,20 @@
   "dependencies": {
     "@date-fns/tz": "^1.5.0",
     "@supabase/supabase-js": "^2.117.2",
+    "@tanstack/react-query": "^5.104.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
     "date-fns": "^4.4.0",
     "lucide-react": "^1.49.0",
     "radix-ui": "^1.6.7",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "react-router": "^8.4.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@fontsource-variable/geist": "^5.3.0",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.19.0",
     "@types/react": "^19.2.18",
