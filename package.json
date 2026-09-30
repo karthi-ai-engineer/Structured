@@ -32,7 +32,8 @@
     "db:migrations": "node scripts/supabase.mjs migrations",
     "db:types": "node scripts/supabase.mjs types",
     "db:ping": "node scripts/supabase.mjs ping",
-    "env:check": "node scripts/lib/env-file.mjs check"
+    "env:check": "node scripts/lib/env-file.mjs check",
+    "env:sync-vercel": "node scripts/sync-vercel-env.mjs"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",
