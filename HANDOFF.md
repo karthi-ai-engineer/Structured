@@ -3,9 +3,36 @@
 > Read this first when resuming on any device. It is updated at the end of every work package, every fix round, every phase, and before every machine switch. Values (keys, URLs, the Vercel project name, the Supabase ref) are never written here: see `.env.local`.
 
 ## Current status
+- **Phase 2 (MCP server, "Claude plans my day"): IN PROGRESS.** Paused 2026-09-30 at the owner's request.
+  - **Integration branch:** `phase-2-mcp`
+  - **Epic:** #14, milestone "Phase 2: MCP server"
+  - **WP1 merged:** PR #17 (issue #15)
+    - `src/core/schedule.ts`, `rows.ts`, `icons.ts`
+    - migration `0002_mcp_batches`, already applied to the database
+    - `MCP_SECRET` in `.env.local` and in Vercel (Secret in production, Config in development)
+  - **WP2 open:** PR #18 (issue #16), branch **`feat/phase-2-wp2-mcp-server`**, the live work branch
+    - It holds the MCP server (`server/`, `api/mcp/[secret].ts`): 13 tools and 2 prompts.
+    - Its code review, round 1, asked for changes. All 12 findings are fixed and pushed (see the "fix(phase-2)" commits); `npm run verify` passes with 876 tests.
+- **Resume Phase 2 here** (in order):
+  1. `git switch feat/phase-2-wp2-mcp-server && git pull`
+  2. **Add unit tests for the new review behaviours** in `server/__tests__/mcp.test.ts`:
+     - undo skips tasks the user changed since (`force: true` reverts them)
+     - a retry after a partial undo
+     - undoing `add_subtasks` removes only the added items
+     - `start_time` makes an all-day task timed, and a start time without a date is an error
+     - an unknown icon in `update_task` is an error
+     - unknown ids in `set_completion` / `delete_tasks`
+     - a failure midway through `move_tasks` returns the `batch_id`
+     - `ends_next_day`
+     - search for `*`
+     To inject failures, give `MemoryStore` a hook that makes the next `update` throw a `StoreError`.
+  3. `npm run verify` and `npm run test:integration` (live; `__test__` rows only).
+  4. Post a round-2 review on PR #18 (`Verdict: APPROVED`, mapping findings to fixes). Wait until a `ci-verify` check exists on the PR head, then merge with a merge commit.
+  5. **WP3:** commit the "MCP server (Phase 2)" section already drafted in `CLAUDE.md`, then do the release prep (CHANGELOG `0.2.0`, PLAN §14 checkboxes, `docs/phases/phase-2/VERIFICATION.md`, this file).
+  6. Release PR `phase-2-mcp` → `main`, deploy, check the live endpoint with the MCP client, tag `v0.2.0`.
+  7. Give the owner the connector URL privately, in chat (never in the repo): `PROD_URL` + `/api/mcp/` + `MCP_SECRET`, both from `.env.local`. In Claude: Settings → Connectors → Add custom connector. In Claude Code: `claude mcp add --transport http structured <URL>`.
 - **Phase 1 (Web MVP): SHIPPED** as `v0.1.0`. PRs #7, #9 and #11 went into `phase-1-web-mvp`, then the release PR into `main`; the deploy workflow deployed production. Epic #5 and milestone "Phase 1: Web MVP" are closed. Verified in `docs/phases/phase-1/VERIFICATION.md`, and changes are listed in `CHANGELOG.md`.
 - **Phase 0 (Foundation): SHIPPED** as `v0.0.1` (PR #2, fix PR #4).
-- **Next: Phase 2 (MCP server, "Claude plans my day")** on a new branch `phase-2-mcp` from `main`. Scope: master `PLAN.md` §10 and §14 "Phase 2".
 - **Last updated:** 2026-09-30
 - **Process from Phase 1 (decided 2026-09-30): lean.** The owner found the multi-agent pipeline far too slow for the work. From now on:
   - Build directly in the session: one issue plus one `feat/…` PR per work package, each reviewed by at most one reviewer agent.
@@ -46,10 +73,7 @@ Details, commands and deviations for every work package are in `docs/phases/phas
 - **GitHub:** repo secrets `VERCEL_TOKEN` (Vercel scope "Karthi Labs"), `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL`; ruleset 24225914; CodeQL default setup; description and 12 topics.
 
 ### Next
-1. **Phase 2 (MCP server):** `git switch main && git pull && git switch -c phase-2-mcp`, then follow the lean process above. The scope is in master `PLAN.md` §10 (tools, prompts, auth by secret path) and §14 "Phase 2".
-   - Early checks: `server/` and `api/` need their own tsconfig referenced from `tsconfig.json`.
-   - Confirm that Vercel's function bundling resolves `src/core`'s relative `.ts` imports.
-   - Reuse `src/core/tasks.ts`, `src/data/mappers.ts` and the repositories.
+1. **Phase 2 (MCP server):** in progress. Follow **Resume Phase 2 here** under Current status.
 2. **Phase 0 QA notes** (still useful as reference): DEVLOG WP9 "Notes for testers" and the acceptance-criteria self-check table.
 3. **Ship follow-ups:**
    - **CodeQL languages** (PLAN §17.1 step 8). Right after the merge, `gh api repos/karthi-ai-engineer/Structured/code-scanning/default-setup --jq '.state, .languages'` must show `configured` with `javascript-typescript` and `actions`. If a language is missing, run: `printf '{"state":"configured","query_suite":"default","languages":["javascript-typescript","actions"]}' | gh api -X PATCH repos/karthi-ai-engineer/Structured/code-scanning/default-setup --input -`. The same follow-up is in the PR #2 body.
