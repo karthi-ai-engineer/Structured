@@ -1,4 +1,12 @@
-import { Suspense, use, useState, useTransition, type ReactNode } from 'react'
+import {
+  Suspense,
+  use,
+  useState,
+  useTransition,
+  type FocusEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
 import { LoaderCircle } from 'lucide-react'
 import { formatDuration, type WeekStart } from '@/core/dates'
 import { DURATION_PRESETS } from '@/core/tasks'
@@ -47,14 +55,32 @@ function Segmented<T extends string>({
   options: readonly { value: T; label: string }[]
   onChange: (value: T) => void
 }) {
+  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+    const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]
+    if (step === undefined) return
+    e.preventDefault()
+    const index = options.findIndex((o) => o.value === value)
+    const next = options[(index + step + options.length) % options.length]
+    if (!next) return
+    onChange(next.value)
+    const buttons = e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')
+    buttons[options.indexOf(next)]?.focus()
+  }
+
   return (
-    <div role="radiogroup" aria-label={label} className="flex rounded-lg bg-muted p-0.5">
+    <div
+      role="radiogroup"
+      aria-label={label}
+      onKeyDown={onKeyDown}
+      className="flex rounded-lg bg-muted p-0.5"
+    >
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           role="radio"
           aria-checked={value === o.value}
+          tabIndex={value === o.value ? 0 : -1}
           onClick={() => onChange(o.value)}
           className={cn(
             'min-h-8 rounded-md px-3 text-sm',
@@ -108,9 +134,20 @@ export function SettingsView() {
   function save(patch: SettingsPatch) {
     if (validateSettingsPatch(patch).length === 0) update(patch)
   }
-  const onTime = (key: 'dayStart' | 'dayEnd') => (value: string) => {
-    if (value) save({ [key]: value })
-  }
+  // Time inputs fire on every segment typed, so they save on blur (or Enter) instead. They are
+  // uncontrolled; the key remounts them when the setting changes on another device.
+  const timeProps = (key: 'dayStart' | 'dayEnd') => ({
+    type: 'time',
+    className: 'h-9 w-32',
+    defaultValue: settings[key],
+    onBlur: (e: FocusEvent<HTMLInputElement>) => {
+      const value = e.currentTarget.value
+      if (value && value !== settings[key]) save({ [key]: value })
+    },
+    onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') e.currentTarget.blur()
+    },
+  })
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 pt-4 pb-28 lg:pb-8">
@@ -169,22 +206,10 @@ export function SettingsView() {
           </select>
         </Row>
         <Row label="Day starts" htmlFor="set-start">
-          <Input
-            id="set-start"
-            type="time"
-            className="h-9 w-32"
-            value={settings.dayStart}
-            onChange={(e) => onTime('dayStart')(e.target.value)}
-          />
+          <Input key={settings.dayStart} id="set-start" {...timeProps('dayStart')} />
         </Row>
         <Row label="Day ends" htmlFor="set-end">
-          <Input
-            id="set-end"
-            type="time"
-            className="h-9 w-32"
-            value={settings.dayEnd}
-            onChange={(e) => onTime('dayEnd')(e.target.value)}
-          />
+          <Input key={settings.dayEnd} id="set-end" {...timeProps('dayEnd')} />
         </Row>
         <Row label="Default duration" htmlFor="set-duration">
           <select
