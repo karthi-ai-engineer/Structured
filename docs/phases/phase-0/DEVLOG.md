@@ -833,3 +833,129 @@ gh run view <id> --log | node scripts/checks/leaks.mjs --stdin   # every CI run 
 - **Do not test the protection by pushing to `main`.** The API evidence above is the check.
 - **CodeQL has no analysis yet.** No CodeQL check appears on PR #2 until `main` has code; this is expected (deviation 2).
 - **The required check is only `ci-verify`.** CodeQL results are not a merge gate.
+
+---
+
+## WP9: Documentation, resume rehearsal and final sweep
+
+**Date:** 2026-09-30 (UTC+9). **Branch:** `phase-0-foundation`. **Tracking issue:** #1. **PR:** #2 (draft).
+
+### What was done
+- **`CLAUDE.md` part 2** (commit `docs: add commands, environment and CI/CD flow to contributor guide`). Appended after the session-start ritual; no existing line changed (`git diff 1195168 -- CLAUDE.md | grep '^-[^-]'` still prints only the WP2 placeholder line). New sections:
+  - **Work package checklist:** the opening ritual (the existing session-start ritual) and the seven-step closing ritual.
+  - **Commands:** every npm script with one line each, plus the other tools (`supabase.mjs settings`, `env-file.mjs get|set`, `deploy-prod.sh`, `smoke.mjs`, `npx shadcn add`).
+  - **Environment variables:** the §5.11 matrix (names only), "the Vercel development env is the source of truth", "sync a new local-only key before anyone pulls", `--apply` never overwrites, `VITE_*` as Config, and the four places a new app key must be added.
+  - **CI/CD flow:** §10.6 plus the `ci-verify` rules (no path filters, never `[skip ci]`, never rename or reuse the name), "every merged Dependabot PR deploys", the bot PR title/body skip (D0-17), the pinned Vercel CLI (bump all three files in one commit), "after merging a Dependabot npm PR, run `npm ci` on Windows", and the §10.3 fix paths for a blocked Dependabot PR.
+  - **Secrets:** read values with `env-file.mjs get`, secret-bearing output to scratch files, masking in docs, no key-shaped strings even fake ones, `::add-mask::`, the pre-push checks and the PR-text word check.
+  - **Runbooks:** links to the HANDOFF "Recovery and runbooks" section.
+- **README rewritten** (commit `docs: rewrite README`): pitch, CI badge, status and roadmap table for Phases 0 to 6, planned features grouped as PLAN §3 with the phase for each, tech stack, an architecture sketch, local setup (Node 24, `npm ci`, `vercel env pull` via HANDOFF or `.env.example`, `npm run dev`), "find the live branch", a scripts table, how the repo works (link to `CLAUDE.md`), the "no login yet" note, and a license line. Its only URLs are GitHub URLs (badge, clone, `ls-remote`).
+- **HANDOFF final shape** (commits `docs: update handoff for phase 0 completion` and `docs: restore .gitignore after vercel env pull in the resume steps`):
+  - Current status: phase, branch, last update with zone, pipeline stage with `resumeFrom`/`skipWPs`, IDs, a one-line summary per WP, cloud resources, **Next** (with the r1 forward notes: the Phase 1 seeding trigger, the Phase 2 tsconfig and function-bundling checks, and the §0.1 items, none deferred), blockers and notes.
+  - Find the live branch; **New machine** (10 steps, each with a check); re-linking an existing clone; returning to an existing clone.
+  - Recovery and runbooks: paused database, TCP 5432, production rollback, leak response, GPG signing failure, and `.gitignore` changes made by the Vercel CLI.
+- **Resume rehearsal**, twice (see below). The first run found a real gap in the steps; after the fix, the second run followed the corrected steps on a new clone and every check passed.
+- **Final sweep:** AC 1 to 38 self-checked (table below), the leak scan over files, commit messages and the logs of all 31 CI runs on the branch, the attribution and author checks, and the PR #2 body update (checked first with `check:commits --text-file`, the PR-text word check and `check:leaks --files`).
+
+### Resume rehearsal
+Both runs used a clone of `phase-0-foundation` in the session scratchpad, on this machine (Node 26.3.1, Git 2.55, gh 2.97).
+
+**Run 1** (clone of `f3ccca4`). Steps 1 to 8 passed. Step 9 failed: `npm run verify` stopped at `check:hygiene` with `FAIL .gitignore: CR line endings (must be LF)`, although step 6 had reverted `.gitignore` after `vercel link`. The file times showed that `vercel env pull` had appended `.env*` again. The pinned CLI's source (`vercel@61.1.0`, `addToGitIgnore` in `dist/chunks/chunk-MDPHTALV.js`, called by `env pull` with `.env*` when the target is `.env.local`) explains it:
+- the CLI appends the line unless `.gitignore` already contains it as an exact line
+- it splits the file on `\r\n` when the file contains one, and otherwise on `os.EOL`, which is `\r\n` on Windows
+- so on Windows an LF `.gitignore` is one "line" for the CLI, the check never matches, and every `link` or `env pull` appends its line with CRLF
+
+Adding the lines to `.gitignore` would therefore not help on Windows, so the fix is procedural: HANDOFF step 6 now runs `git checkout -- .gitignore` after the pull as well and ends with an empty `git status --short`; "Returning to an existing clone", the runbook and `CLAUDE.md` (environment section) say the same. After the revert, run 1's `verify` passed, its dev server showed "DB connected", and all 7 keys matched. Run 1 was then cleaned up (secrets first, then the clone).
+
+**Run 2** (a new clone of `056de7f`, which has the fix), following "New machine" literally:
+
+| Step | Result |
+|---|---|
+| 1 Tools | `node --version` v26.3.1 (the step allows Node 26 with the warning; Node 24 is not installed here, open question 6), git and gh work |
+| 2 GitHub | `gh api user --jq .login` = `karthi-ai-engineer`; `gh auth status` lists `workflow` |
+| 3 Clone | `git clone -b phase-0-foundation …`; `git branch --show-current` = `phase-0-foundation` (the live branch per `git ls-remote --heads`) |
+| 4 Identity | the four `git config` lines inside the clone only; `--get-all` printed an empty line, then `!gh auth git-credential`; `git ls-remote origin` worked with `GIT_TERMINAL_PROMPT=0` |
+| 5 `npm ci` | exit 0 (the expected `EBADENGINE` warning) |
+| 6 Vercel | the step's bash blocks were **extracted from the clone's `HANDOFF.md` and run unchanged**, except `TEAM='<team slug>'` (filled from `teams ls`) and `$V login` (replaced by a `whoami` check, because the CLI is already logged in). Output: `project found`, `inspect ok`, `linked to the existing project`, `structured-* projects: 1`, `no git link`, `env pulled`, and an empty `git status --short` |
+| 7 `env:check` | all 7 keys `ok` |
+| 8 Supabase | `npx supabase login` skipped (already logged in); `db:link` exit 0; `db:migrations` `0001` local and remote; `db:ping` `db: ok (200)` |
+| 9 Verify and run | `npm run verify` exit 0 (25 files, 796 tests, coverage unchanged; `leaks: ok … 12 sensitive values`, which includes the pulled `VERCEL_OIDC_TOKEN`); `npm run test:integration` 7 passed, 0 skipped; `npm run dev` in Chrome: heading "Structured", `data-state="connected"`, title `DB connected`, detail `Settings row found`, 1 settings request, no console errors. The server was stopped with `taskkill /T /F`, and the ports were free |
+| Key comparison | a scratch Node script compared the clone's `.env.local` with the original: all 7 app keys `match`; the one extra key (`VERCEL_OIDC_TOKEN`) is ignored (F23). Only statuses were printed |
+| Cleanup | the clone's `.env.local`, `.vercel/`, `supabase/.temp` and `dist/` were removed first, then the clone; `test ! -e` confirmed that both rehearsal clones are gone |
+
+### Commands run
+```
+gh api user --jq .login; git config user.email; git pull --ff-only; netstat -ano; npm run db:ping   # opening ritual
+npx --yes vercel@61.1.0 project inspect <name> --scope <orgId> --format json > <scratch>   # JSON keys only, file deleted
+npx --yes vercel@61.1.0 promote --help; … rollback --help; … ls --help                      # runbook flags
+<read vercel@61.1.0 dist/chunks/chunk-MDPHTALV.js and chunk-HNQC4E2A.js>                   # addToGitIgnore
+npm run check:hygiene; npm run check:leaks; git commit …; npm run check:commits; git push origin phase-0-foundation
+# rehearsal (twice) in <scratch>/resume: the HANDOFF "New machine" steps, npm run test:integration,
+# the key comparison, then cleanup and test ! -e
+# AC self-check: see the table below (lint probes, guard build, db:*, smoke.mjs against the deployed commit,
+#   vercel project inspect/ls/protection, env:sync-vercel, actionlint 1.7.12, check-jsonschema, gh api …)
+for id in $(gh run list -b phase-0-foundation -L 100 --json databaseId -q '.[].databaseId'); do
+  gh run view $id --log | node scripts/checks/leaks.mjs --stdin || echo "LEAK in run $id"; done
+node scripts/checks/commits.mjs --text-file <PR body | issue #1 text | PR #2 text>; <PR-text word check>; node scripts/checks/leaks.mjs --files <same>
+gh pr edit 2 --body-file <PR body>
+npm run verify
+```
+Every scratch file that held a value, a URL or the project name (inspect, ls, protection, sync and smoke outputs, the rehearsal logs) was deleted after use.
+
+### Acceptance criteria self-check (§12)
+| AC | Result | Evidence (this WP unless noted) |
+|---|---|---|
+| 1 Local commands | pass | `npm run verify` exit 0 in the working repo and in the rehearsal clone; `npm ci` exit 0 in both rehearsal clones |
+| 2 CI green on the PR | pass | `gh pr checks 2`: `ci-verify` pass for the push and PR runs of `056de7f`; the log shows `node-version-file: .nvmrc`, `node: v24.21.0`, a restored npm cache, `PR text: checked (title and body)`, `commits: ok` |
+| 3 Docs preserved | pass | `git diff 1195168 -- PLAN.md` empty; `CLAUDE.md` removed lines: 1 (the placeholder); `git diff 28df4fd --stat` over the AC 3 paths is empty. The `1195168` diff under `.claude`, `docs/process` and `docs/phases/phase-1` is the owner's `28df4fd` (DEVLOG WP1) |
+| 4 Stack pins | pass | `npm ls`: react 19.3.0, vite 8.3.1, typescript 6.0.3, tailwindcss 4.3.3, vitest 5.0.2, eslint 10.11.0; `engines.node` 24.x; `.nvmrc` 24 |
+| 5 Strict and alias | pass | `tsc --showConfig`: `strict` true, `noUncheckedIndexedAccess` true, `paths` `@/*`, no `baseUrl`; the same `paths` in `tsconfig.json`; the `@` alias in `vite.config.ts`; `App.tsx` imports `@/components/ui/button` |
+| 6 shadcn/ui | pass | `components.json` style `radix-nova`, css `src/styles/index.css`; `cn` in `src/lib/utils.ts`; `<Button` in `App.tsx` |
+| 7 Line endings | pass | `.gitattributes`; the `git ls-files --eol` filter prints nothing; `check:hygiene` ok |
+| 8 Skeleton | pass | tracked files in all nine folders; the five placeholder folders hold only `README.md`; no feature UI |
+| 9 Lint rules | pass | the six probes re-run: each exits 1 with its configured message; `git status` clean afterwards |
+| 10 Core in plain Node | pass | `check:core` `ok`; both greps print nothing |
+| 11 API | pass | `dates.api.test.ts` passes (in `verify`) |
+| 12 Behaviour and coverage | pass | coverage 99.45 / 99.13 / 100 / 99.4; the §13.1 row mapping is in DEVLOG WP4 |
+| 13 Hermetic tests | pass | `environment.test.ts` passes with `.env.local` present |
+| 14 Migration content | pass | 6 tables, 4 indexes, 1 grant, 6 RLS, 6 policies, 4 triggers, the publication line, `notify pgrst`, the 6 check constraints (`grep -c`) |
+| 15 Migration applied | pass | `db:migrations` `0001` / `0001`; `push --dry-run`: `Remote database is up to date.` |
+| 16 Integration tests | pass | 7 passed, 0 skipped (rehearsal clone); WP5 for the per-test proof |
+| 17 Types, no drift | pass | `db:types`: unchanged (6 public tables); `git diff --exit-code` clean |
+| 18 Env files | pass | `env:check` 7 × `ok`; `.env.local` ignored; `.env.example` 7 empty keys; no BOM |
+| 19 Settings row | pass | `settings row: present, timezone=Asia/Tokyo`, equal to Chrome's zone (WP6 M2) |
+| 20 Status states | pass | M1 to M3 in WP6; `DB connected` / `data-state="connected"` again from the rehearsal clone's dev server; unit tests for every code |
+| 21 Env safety | pass | unit tests; `REQUIRE_SUPABASE_ENV=1 VITE_SUPABASE_URL= npx vite build` exits 1 with `invalid Supabase env: VITE_SUPABASE_URL is missing` and writes no output |
+| 22 Accessibility | pass | unit tests (`role`, `aria-live`, `min-h-11`, `aria-busy`); `index.html` has `lang="en"` and `color-scheme` light |
+| 23 Smoke check | pass | `smoke.mjs` against the deployed commit `9c23319` (no redeploy): all 9 lines `ok`, `smoke: ok`; its output passes `check:leaks --files` |
+| 24 Production read and write | **partial** | bullet 1 pass (E5 in WP7); bullet 3 pass (the only committed image is `public/favicon.svg`). **Bullet 2 open:** M2 against production needs a deletion of the live `settings` row, which no WP session was permitted to do (WP7 deviation 7). Recorded in HANDOFF "Next" and in the PR body ("Open before Ship") for QA or the owner |
+| 25 No Git integration | pass | `project inspect --format json`: no key matching `link`/`git`; `vercel.json` `git.deploymentEnabled: false`; PR #2 has 0 comments; `named VERCEL_PROJECT_NAME: 1, starting with structured-: 1` |
+| 26 Standard Protection | pass | protection JSON `prod_deployment_urls_and_all_previews`; unauthenticated `GET /` 200 (smoke); the generated-URL probe gave 302 in WP7 |
+| 27 Env matrix | pass | `env:sync-vercel`: 11 rows `same`, `SUPABASE_SECRET_KEY production: unknown (Secret)`, `types: ok`, `env sync: in sync` |
+| 28 Project settings | pass | framework `vite`, Node.js `24.x` |
+| 29 Workflows | pass | actionlint 1.7.12: no findings; both workflows `permissions: contents: read`; actions `checkout@v7`, `setup-node@v7`; the echo grep prints nothing; `ci.yml` has `ci-verify`, `cancel-in-progress` and no path filter (the one `paths` hit is the warning comment); `deploy.yml` guards present; `deploy-prod.sh` ran end to end in WP7 |
+| 30 Secrets | pass | `PROD_URL`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `VERCEL_TOKEN` |
+| 31 Ruleset | pass | one active ruleset 24225914; `rules/branches/main`: deletion, non_fast_forward, pull_request (0 approvals, `["merge"]`), required_status_checks (`ci-verify`, 15368, strict off) |
+| 32 Code scanning | pass (deferral recorded) | `configured`, `languages=[]`; the deferral with the API message is in HANDOFF "Next" and in the PR body's post-merge follow-ups (WP8) |
+| 33 Automation files | pass | `check-jsonschema` ok for dependabot, both forms, `config.yml` and both workflows; the template word check prints nothing; the bot expression is in `ci.yml` lines 54 and 55; labels `dependencies`, `ci`, `phase`, `phase-0` exist |
+| 34 Presentation | pass | 12 topics and the description; README has the badge and the Status, Planned features, Tech stack and Local setup sections; `check:leaks --files README.md` ok, no `vercel.app`/`supabase.co`, project name count 0 |
+| 35 HANDOFF resume | pass | rehearsal run 2 above; both clones deleted (`test ! -e`); HANDOFF states phase, branch, last update with zone, done, next (with the forward notes), blockers and IDs |
+| 36 No leaks | pass | `check:leaks` with `.env.local`: 115 files and 51 commit messages ok; the logs of all 31 CI runs on the branch (all `success`) pass `--stdin` with no LEAK line |
+| 37 Attribution and authorship | pass | `check:commits` ok for `origin/main..HEAD` (51 commits, all on the allowlist, 0 `Co-Authored-By` trailers); the new PR body and title, issue #1 (body, 0 comments) and PR #2 (body, 0 comments) pass `--text-file`, the PR-text word check and `check:leaks --files` |
+| 38 Process | pass | 51 conventional commits (0 non-conventional subjects), pushed after every WP; a DEVLOG section per WP (this one is WP9); issue #1 WP1 to WP9 ticked (WP9 in this WP's closing ritual); PR #2 still a draft; no server listening on 5173/4173 |
+
+### Deviations
+1. **The HANDOFF steps restore `.gitignore` after `vercel env pull`**, not only after `vercel link` (found by rehearsal run 1; see above). This needed one extra commit, `docs: restore .gitignore after vercel env pull in the resume steps`, and a second, complete rehearsal run.
+2. **Rollback runbook flags.** PLAN §17.2 uses `vercel ls --prod`, which CLI 61.1.0 does not have (`ls --help` lists `--environment <TARGET>`). The runbook uses `ls --environment production --scope <team>`, and passes the deployment explicitly to `rollback` and `promote`, which is how their help describes them.
+3. **HANDOFF step 6 is agent-safe.** The plan wrote "`project ls --scope <team>` shows the `structured-…` project". The step instead reads the name from the JSON into a shell variable (never printed), keeps every CLI output in the gitignored `.vercel/` and deletes it, re-counts the projects after linking (the §9.3 count), and checks the inspect JSON for Git-link keys. It is the same sequence (inspect before link, `--team`, `git disconnect` and verify, `env pull`), with checks that can run unattended.
+4. **Rehearsal environment.** It ran on Node 26.3.1 (Node 24 is not installed on this machine; open question 6), and the three logins (`gh`, Vercel, Supabase) already existed, so each login step was replaced by its check. `<team slug>` was filled from `teams ls`; HANDOFF keeps the placeholder.
+5. **`CLAUDE.md` "Work package checklist"** puts the opening ritual as a reference to the existing session-start ritual (not repeated) and adds the closing ritual.
+6. **README license line** ("no license has been chosen yet, so all rights are reserved") states the current fact; the choice stays open question 3.
+7. **AC 24 bullet 2 stays open** (see the table). WP9 did not delete the live `settings` row.
+8. **PR #2 body** gained an "Open before Ship" section (AC 24 bullet 2) and a "First `Deploy` run" follow-up, besides the summary and the verification notes.
+
+### Notes for testers
+- **Run the resume steps in Git Bash, as written.** Step 6 is the delicate one: never run `vercel link` before `project found` and `inspect ok`, and always end with an empty `git status --short`.
+- **After any `vercel env pull` on Windows**, `.gitignore` has a new CRLF line and `npm run verify` fails at `check:hygiene` until `git checkout -- .gitignore`. This is CLI behaviour, not a repo bug.
+- **Production still serves `9c23319`** (the WP7 code); all later commits are docs only. The smoke check without a deploy is in HANDOFF "Notes".
+- **The open item for QA is AC 24 bullet 2** (M2 against production, with a real browser on the owner's machine creating the row).
+- This machine's scratchpad folder also holds files from earlier sessions (for example the actionlint binary). From WP9 only the PR body file and the key-comparison script remain there; neither contains a value.

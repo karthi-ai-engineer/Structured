@@ -3,13 +3,13 @@
 > Read this first when resuming on any device. It is updated at the end of every work package, every fix round, every phase, and before every machine switch. Values (keys, URLs, the Vercel project name, the Supabase ref) are never written here: see `.env.local`.
 
 ## Current status
-- **Phase:** 0 (Foundation), implementation stage
+- **Phase:** 0 (Foundation), implementation complete; QA next
 - **Branch:** `phase-0-foundation`
-- **Last updated:** 2026-09-30 13:35 UTC+9
-- **Pipeline stage reached:** stage 7 (implement), WP9 in progress. Stages 1 to 6 are done:
+- **Last updated:** 2026-09-30 13:50 UTC+9
+- **Pipeline stage reached:** stage 7 (implement) is complete: all nine work packages are done. Stages 1 to 6 are done too:
   - plan, edge-case research, replan and design review: `docs/phases/phase-0/PLAN.md` (approved in `review-r2.md`)
   - tracking issue **#1** ("Phase 0: Foundation", labels `phase`, `phase-0`)
-- **Resume with:** `resumeFrom: "implement"`, `skipWPs: ["WP1", "WP2", "WP3", "WP4", "WP5", "WP6", "WP7", "WP8"]`
+- **Resume with:** `resumeFrom: "test1"`, `skipWPs: ["WP1", "WP2", "WP3", "WP4", "WP5", "WP6", "WP7", "WP8", "WP9"]`
 - **IDs:**
   - tracking issue **#1**
   - draft PR **#2** (`phase-0-foundation` → `main`, `Closes #1`)
@@ -26,7 +26,7 @@ Details, commands and deviations for every work package are in `docs/phases/phas
 - **WP6** "DB connected": typed client, settings repository, health check with typed error codes, the status page (`use()` under `Suspense`, no `useEffect`), the production env guard and the `build-sha` meta. The `settings` row was created by the owner's Chrome with `timezone=Asia/Tokyo`.
 - **WP7** Vercel: the secret-named project (Git integration off, Vite, Node.js 24.x, Standard Protection), `vercel.json`, the env matrix in sync, `scripts/ci/deploy-prod.sh` (the one deploy path) with the smoke check, `deploy.yml`, GitHub secrets. Production serves commit `9c23319` and shows "DB connected".
 - **WP8** GitHub: ruleset 24225914 on `main` (PR with 0 approvals, merge commits only, `ci-verify` required, no force-push or deletion), CodeQL default setup `configured` (languages follow at Ship), description and 12 topics.
-- **WP9** (in progress) Docs and final sweep: `CLAUDE.md` part 2 (commands, env matrix, CI/CD flow, Dependabot fix paths, secrets rules, runbook links, work package checklist) and the README rewrite are done. Next in WP9: this HANDOFF's resume rehearsal on a fresh clone, then the final leak and attribution sweep.
+- **WP9** Docs and final sweep: `CLAUDE.md` part 2 (work package checklist, commands, env matrix, CI/CD flow, Dependabot fix paths, secrets rules, runbook links), the README rewrite, and this file's final shape. The "New machine" steps were rehearsed on a fresh clone: every check passed, all 7 app keys matched, and the clone was deleted. The first run found that `vercel env pull` appends a CRLF line to `.gitignore` on Windows, so the steps now restore it. AC 1 to 38 are self-checked in DEVLOG WP9 (all pass except AC 24 bullet 2, see "Next"). The logs of all 31 CI runs on the branch pass the leak check.
 
 ### Cloud resources (values only in `.env.local`)
 - **Supabase** project `structured`, ap-south-1, organization "Karthi labs". It uses the second and last free slot. URL, ref, keys and database password: `.env.local` and the Vercel development env.
@@ -34,8 +34,8 @@ Details, commands and deviations for every work package are in `docs/phases/phas
 - **GitHub:** repo secrets `VERCEL_TOKEN` (Vercel scope "Karthi Labs"), `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL`; ruleset 24225914; CodeQL default setup; description and 12 topics.
 
 ### Next
-1. **Finish WP9:** the resume rehearsal (follow "New machine" below on a throwaway clone), the final sweep (PLAN §12 AC 36 to 38), the PR #2 body update, and the WP9 tick on issue #1.
-2. **Then:** QA round 1 (`test1`), QA round 2 (`test2`), final verification, Ship (PLAN §17.1).
+1. **QA round 1** (`test1`), then QA round 2 (`test2`), final verification and Ship (PLAN §17.1). Resume the pipeline with `resumeFrom: "test1"`.
+2. **Testers:** read DEVLOG WP9 "Notes for testers" first. The acceptance-criteria self-check table is there.
 3. **Ship follow-ups:**
    - **CodeQL languages** (PLAN §17.1 step 8). Right after the merge, `gh api repos/karthi-ai-engineer/Structured/code-scanning/default-setup --jq '.state, .languages'` must show `configured` with `javascript-typescript` and `actions`. If a language is missing, run: `printf '{"state":"configured","query_suite":"default","languages":["javascript-typescript","actions"]}' | gh api -X PATCH repos/karthi-ai-engineer/Structured/code-scanning/default-setup --input -`. The same follow-up is in the PR #2 body.
    - **Merge with `gh pr merge 2 --merge`.** The ruleset allows merge commits only and needs a green `ci-verify` on the PR head.
