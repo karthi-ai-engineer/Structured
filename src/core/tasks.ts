@@ -101,6 +101,18 @@ export function parseSubtasks(value: unknown): Subtask[] {
   return out
 }
 
+/** The first grapheme of `text` if it is an emoji (keeping ZWJ sequences and skin tones whole),
+ *  else null. Used for the editor's "type an emoji" field. */
+export function firstEmoji(text: string): string | null {
+  const first = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+    .segment(text.trim())
+    [Symbol.iterator]()
+    .next()
+  if (first.done) return null
+  const grapheme = first.value.segment
+  return /\p{Extended_Pictographic}/u.test(grapheme) ? grapheme : null
+}
+
 /** Trims and collapses inner whitespace. */
 export function normalizeTitle(title: string): string {
   return title.trim().replace(/\s+/g, ' ')
@@ -123,6 +135,9 @@ export function validateDraft(draft: TaskDraft): string[] {
   }
   if (draft.date !== null && !isISODate(draft.date)) problems.push('Date is invalid')
   if (draft.startTime !== null && !isTime(draft.startTime)) problems.push('Start time is invalid')
+  if (draft.date !== null && !draft.isAllDay && draft.startTime === null) {
+    problems.push('Pick a start time or turn on All day')
+  }
   if (!isTaskColor(draft.color)) problems.push('Color is invalid')
   return problems
 }

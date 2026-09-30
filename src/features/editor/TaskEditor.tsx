@@ -6,6 +6,7 @@ import {
   DURATION_PRESETS,
   TASK_COLORS,
   colorHex,
+  firstEmoji,
   nextStartTime,
   normalizeTitle,
   validateDraft,
@@ -52,6 +53,11 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
   )
   const [showIcons, setShowIcons] = useState(false)
   const [newSubtask, setNewSubtask] = useState('')
+  // The custom duration field keeps its raw text, so it can be emptied while typing; an empty or
+  // partial value becomes NaN, which validateDraft rejects (never a silent 0).
+  const [durationText, setDurationText] = useState(() => String(draft.durationMin))
+  // The date the task had (or was opened for), restored when "Scheduled" is switched back on.
+  const originalDate = request.mode === 'edit' ? request.task.date : (request.defaults.date ?? null)
   const set = (patch: Partial<TaskDraft>) => setDraft((d) => ({ ...d, ...patch }))
 
   const problems = validateDraft(draft)
@@ -69,8 +75,13 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
       startTime: draft.date === null || draft.isAllDay ? null : draft.startTime,
       isAllDay: draft.date !== null && draft.isAllDay,
     }
-    if (request.mode === 'edit') actions.update(request.task, clean)
-    else actions.create(crypto.randomUUID(), clean)
+    // A completed task moved to the inbox is reopened: the inbox lists only open tasks, so it
+    // would otherwise disappear from every screen.
+    const reopen =
+      request.mode === 'edit' && clean.date === null && request.task.completedAt !== null
+    if (request.mode === 'edit') {
+      actions.update(request.task, reopen ? { ...clean, completedAt: null } : clean)
+    } else actions.create(crypto.randomUUID(), clean)
     onClose()
   }
 
@@ -145,10 +156,10 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
               <Input
                 aria-label="Or type an emoji"
                 placeholder="Or type an emoji"
-                maxLength={8}
+                defaultValue={draft.icon !== null && !TASK_ICONS[draft.icon] ? draft.icon : ''}
                 onChange={(e) => {
-                  const value = e.target.value.trim()
-                  if (value) set({ icon: value })
+                  const emoji = firstEmoji(e.target.value)
+                  if (emoji) set({ icon: emoji })
                 }}
               />
             </div>
@@ -181,7 +192,7 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                   set(
                     on
                       ? {
-                          date: todayIn(settings.timezone),
+                          date: originalDate ?? todayIn(settings.timezone),
                           startTime:
                             draft.startTime ?? nextStartTime(nowMinutesIn(settings.timezone)),
                         }
@@ -204,7 +215,10 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                       id="task-date"
                       type="date"
                       value={draft.date ?? ''}
-                      onChange={(e) => set({ date: e.target.value || null })}
+                      // Clearing a date segment reports '' mid-edit: keep the last full date.
+                      onChange={(e) => {
+                        if (e.target.value) set({ date: e.target.value })
+                      }}
                     />
                   </div>
                   {draft.isAllDay ? null : (
@@ -240,7 +254,10 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                     key={m}
                     type="button"
                     aria-pressed={draft.durationMin === m}
-                    onClick={() => set({ durationMin: m })}
+                    onClick={() => {
+                      set({ durationMin: m })
+                      setDurationText(String(m))
+                    }}
                     className={cn(
                       'min-h-9 rounded-full border px-3 text-sm',
                       draft.durationMin === m ? 'border-transparent text-white' : 'hover:bg-muted',
@@ -255,8 +272,12 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                   aria-label="Custom duration in minutes"
                   min={0}
                   max={1440}
-                  value={draft.durationMin}
-                  onChange={(e) => set({ durationMin: Math.round(Number(e.target.value)) })}
+                  value={durationText}
+                  onChange={(e) => {
+                    const text = e.target.value
+                    setDurationText(text)
+                    set({ durationMin: text.trim() === '' ? Number.NaN : Math.round(Number(text)) })
+                  }}
                   className="h-9 w-24"
                 />
               </div>

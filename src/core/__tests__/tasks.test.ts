@@ -3,6 +3,7 @@ import {
   applyPatch,
   belongsTo,
   colorHex,
+  firstEmoji,
   isAllDayLike,
   isTaskColor,
   layoutDay,
@@ -122,6 +123,34 @@ describe('titles and validation', () => {
     ])
     expect(validateDraft({ ...draft, durationMin: -1 })).toHaveLength(1)
     expect(validateDraft({ ...draft, durationMin: 1441 })).toHaveLength(1)
+  })
+})
+
+describe('scheduling rules', () => {
+  it('requires a start time for a timed task on a date', () => {
+    expect(validateDraft({ ...draft, startTime: null })).toEqual([
+      'Pick a start time or turn on All day',
+    ])
+    expect(validateDraft({ ...draft, startTime: null, isAllDay: true })).toEqual([])
+    expect(validateDraft({ ...draft, date: null, startTime: null })).toEqual([])
+  })
+
+  it('rejects a blank custom duration (NaN) instead of saving 0 minutes', () => {
+    expect(validateDraft({ ...draft, durationMin: Number.NaN })).toEqual([
+      'Duration must be a whole number of minutes from 0 to 1440',
+    ])
+  })
+})
+
+describe('firstEmoji', () => {
+  it('keeps the first emoji grapheme whole and rejects text', () => {
+    expect(firstEmoji('🏋️ gym')).toBe('🏋️')
+    expect(firstEmoji('👩‍💻')).toBe('👩‍💻')
+    expect(firstEmoji('👍🏽x')).toBe('👍🏽')
+    expect(firstEmoji('  🎉 ')).toBe('🎉')
+    expect(firstEmoji('hello')).toBeNull()
+    expect(firstEmoji('sun')).toBeNull()
+    expect(firstEmoji('')).toBeNull()
   })
 })
 
