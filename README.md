@@ -14,13 +14,20 @@ It is a single-user app that runs entirely on free tiers, built phase by phase f
 
 ## Status
 
-**Phase 0 (Foundation)** delivers a strictly typed shell: it deploys to production through GitHub Actions, reads and writes the Supabase database, and shows **"DB connected"** on its home page. The planner features arrive from Phase 1. [`HANDOFF.md`](HANDOFF.md) has the live status.
+**Phase 1 (Web MVP)** makes it a usable planner, on desktop and in a phone browser:
+- a Structured-style day timeline with a week strip
+- a task editor (a bottom sheet on phones)
+- an inbox for undated tasks
+- settings with themes
+- live sync between devices
+
+Next is the Claude connector (Phase 2). [`HANDOFF.md`](HANDOFF.md) has the live status, and [`CHANGELOG.md`](CHANGELOG.md) lists every release.
 
 | Phase | Scope | Status |
 |---|---|---|
-| 0. Foundation | Scaffold, database schema, time-zone core, CI/CD, "DB connected" page | Done; ships as `v0.0.1` |
-| 1. Web MVP | Day timeline, task editor, inbox, week strip, realtime sync, themes, settings | Next |
-| 2. MCP server | "Claude plans my day": read and write tools, dry runs, undo by batch | Planned |
+| 0. Foundation | Scaffold, database schema, time-zone core, CI/CD, "DB connected" page | Done (`v0.0.1`) |
+| 1. Web MVP | Day timeline, task editor, inbox, week strip, realtime sync, themes, settings | Done; ships as `v0.1.0` |
+| 2. MCP server | "Claude plans my day": read and write tools, dry runs, undo by batch | Next |
 | 3. Structured parity | Recurring tasks, drag and drop, week and month views, replan, energy monitor, focus mode, alerts, quick add | Planned |
 | 4. Android APK | Capacitor app, native notifications, APK built by GitHub Actions | Planned |
 | 5. Work tracking | Goals with progress and pace, focus logs, stats, daily and weekly reviews | Planned |

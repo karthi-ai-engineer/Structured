@@ -3,8 +3,9 @@
 > Read this first when resuming on any device. It is updated at the end of every work package, every fix round, every phase, and before every machine switch. Values (keys, URLs, the Vercel project name, the Supabase ref) are never written here: see `.env.local`.
 
 ## Current status
-- **Phase 0 (Foundation): SHIPPED** as `v0.0.1`. PR #2 was merged into `main`, the deploy workflow deployed production, and issue #1 is closed. Verified in `docs/phases/phase-0/VERIFICATION.md`.
-- **Next: Phase 1 (Web MVP)** on a new branch `phase-1-web-mvp` from `main`.
+- **Phase 1 (Web MVP): SHIPPED** as `v0.1.0`. PRs #7, #9 and #11 went into `phase-1-web-mvp`, then the release PR into `main`; the deploy workflow deployed production. Epic #5 and milestone "Phase 1: Web MVP" are closed. Verified in `docs/phases/phase-1/VERIFICATION.md`, and changes are listed in `CHANGELOG.md`.
+- **Phase 0 (Foundation): SHIPPED** as `v0.0.1` (PR #2, fix PR #4).
+- **Next: Phase 2 (MCP server, "Claude plans my day")** on a new branch `phase-2-mcp` from `main`. Scope: master `PLAN.md` §10 and §14 "Phase 2".
 - **Last updated:** 2026-09-30
 - **Process from Phase 1 (decided 2026-09-30): lean.** The owner found the multi-agent pipeline far too slow for the work. From now on:
   - Build directly in the session: one issue plus one `feat/…` PR per work package, each reviewed by at most one reviewer agent.
@@ -12,12 +13,22 @@
   - Keep the GitHub footprint (issues, PRs, reviews, labels, milestone, release) as in `docs/process/TEAM_WORKFLOW.md`.
   - Don't run day-long pipelines. The pipeline scripts in `.claude/workflows/` are kept only for reference.
 - **IDs:**
-  - issue **#1** (closed by PR #2)
-  - PR **#2** (merged)
+  - Phase 1: epic **#5**, WP issues #6, #8 and #10, PRs #7, #9 and #11, milestone 1
+  - Phase 0: issue **#1** (closed by PR #2), bug #3 (fixed by PR #4)
   - ruleset **24225914** ("main protection"). Re-apply it only with the PLAN §9.5 GET-then-PUT/POST snippet, never with a second POST.
 - **Optional owner check:** AC 24 bullet 2 (see VERIFICATION.md). It needs the owner's OK to delete the production `settings` row.
 
-### Done
+### Done in Phase 1
+The app structure is in `CLAUDE.md` ("App structure (Phase 1)"), and the evidence is in `docs/phases/phase-1/VERIFICATION.md`.
+- **WP1** (#7): task and settings domain model; repositories; TanStack Query hooks with optimistic, per-task rollback; realtime sync.
+- **WP2** (#9): the planner UI (shell, timeline, week strip, editor, inbox, settings, theme), plus 11 fixes from code review.
+- **WP3** (#11): live-database and realtime tests, and docs.
+- **Tests:**
+  - `npm run test:e2e`: 9 tests in Microsoft Edge against the live database, including realtime between two windows
+  - `npm run test:integration`: 9 tests
+  - 847 unit tests
+
+### Done in Phase 0
 Details, commands and deviations for every work package are in `docs/phases/phase-0/DEVLOG.md`.
 - **WP1** Scaffold: Vite 8 + React 19 + TypeScript 6.0 strict in the repo root, `@/` alias, LF `.gitattributes`, `.editorconfig`, Node 24 pin (`.nvmrc`, `engines`), privacy metas, strict dev/preview ports.
 - **WP2** Styling and rules: Tailwind CSS v4, shadcn/ui (`radix-nova`, `Button`), type-aware ESLint with the architecture and clock rules, Prettier, README-only placeholder folders, `CLAUDE.md` part 1.
@@ -35,7 +46,10 @@ Details, commands and deviations for every work package are in `docs/phases/phas
 - **GitHub:** repo secrets `VERCEL_TOKEN` (Vercel scope "Karthi Labs"), `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL`; ruleset 24225914; CodeQL default setup; description and 12 topics.
 
 ### Next
-1. **Phase 1 (Web MVP):** `git switch main && git pull && git switch -c phase-1-web-mvp`, then follow the lean process above. The scope is in `docs/phases/phase-1/pipeline-args.json` ("scope") and in master `PLAN.md` §14.
+1. **Phase 2 (MCP server):** `git switch main && git pull && git switch -c phase-2-mcp`, then follow the lean process above. The scope is in master `PLAN.md` §10 (tools, prompts, auth by secret path) and §14 "Phase 2".
+   - Early checks: `server/` and `api/` need their own tsconfig referenced from `tsconfig.json`.
+   - Confirm that Vercel's function bundling resolves `src/core`'s relative `.ts` imports.
+   - Reuse `src/core/tasks.ts`, `src/data/mappers.ts` and the repositories.
 2. **Phase 0 QA notes** (still useful as reference): DEVLOG WP9 "Notes for testers" and the acceptance-criteria self-check table.
 3. **Ship follow-ups:**
    - **CodeQL languages** (PLAN §17.1 step 8). Right after the merge, `gh api repos/karthi-ai-engineer/Structured/code-scanning/default-setup --jq '.state, .languages'` must show `configured` with `javascript-typescript` and `actions`. If a language is missing, run: `printf '{"state":"configured","query_suite":"default","languages":["javascript-typescript","actions"]}' | gh api -X PATCH repos/karthi-ai-engineer/Structured/code-scanning/default-setup --input -`. The same follow-up is in the PR #2 body.
