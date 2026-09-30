@@ -1,0 +1,83 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy-production
+    if: github.ref == 'refs/heads/main' # a dispatch from any other branch never deploys (P32)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERCEL_CLI: vercel@61.1.0 # keep identical in scripts/ci/deploy-prod.sh and scripts/lib/vercel.mjs
+      VERCEL_TELEMETRY_DISABLED: '1'
+    steps:
+      - name: Check required secrets
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          PROD_URL: ${{ secrets.PROD_URL }}
+        run: |
+          missing=0
+          for name in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID PROD_URL; do
+            if [ -z "${!name}" ]; then echo "::error::Repository secret $name is not set"; missing=1; fi
+          done
+          exit "$missing"
+      - name: Mask production host
+        env:
+          PROD_URL: ${{ secrets.PROD_URL }}
+        run: |
+          url="$(printf '%s' "$PROD_URL" | tr -d '[:space:]')"
+          host="${url#*://}"; host="${host%%/*}"
+          echo "::add-mask::$host"
+          echo "::add-mask::${host%%.*}"
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Skip unless this commit is still the head of main
+        id: head
+        run: |
+          head="$(git ls-remote origin refs/heads/main | cut -f1)"
+          if [ "$head" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::This run is for an older commit than the head of main; skipping the deploy."
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v7
+        if: steps.head.outputs.current == 'true'
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false # no dependency cache in the privileged deploy workflow
+      - name: Install dependencies
+        if: steps.head.outputs.current == 'true'
+        run: npm ci
+      - name: Verify (typecheck, lint, unit tests)
+        if: steps.head.outputs.current == 'true'
+        run: npm run typecheck && npm run lint && npm test
+      - name: Install Vercel CLI
+        if: steps.head.outputs.current == 'true'
+        run: |
+          npm install --global "$VERCEL_CLI" > "$RUNNER_TEMP/vercel-cli.log" 2>&1 \
+            || { echo "::error::Vercel CLI install failed"; tail -n 40 "$RUNNER_TEMP/vercel-cli.log"; exit 1; }
+      - name: Pull, build, deploy and smoke-check production
+        if: steps.head.outputs.current == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          PROD_URL: ${{ secrets.PROD_URL }}
+          VERCEL_BIN: vercel
+          EXPECTED_SHA: ${{ github.sha }}
+        run: bash scripts/ci/deploy-prod.sh

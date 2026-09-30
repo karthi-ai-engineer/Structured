@@ -1,0 +1,22 @@
+{
+  "root": "<ABSOLUTE PATH OF THIS CLONE>",
+  "phaseId": "phase-1",
+  "phaseName": "Phase 1: Web MVP",
+  "branch": "phase-1-web-mvp",
+  "nextPhase": "Phase 2: MCP server",
+  "nextBranch": "phase-2-mcp",
+  "releaseTag": "v0.1.0",
+  "today": "<TODAY, YYYY-MM-DD>",
+  "resumeFrom": "design",
+  "gateNonce": 1,
+  "maxReviewRounds": 2,
+  "maxCodeReviewLoops": 2,
+  "maxFixLoops": 3,
+  "edgeLenses": 2,
+  "qa2": true,
+  "fastModel": "sonnet",
+  "envNotes": "<FILL IN for this machine: OS, Node/npm/git/gh versions, Java/Docker availability.> Use 'npx --yes supabase ...' / the supabase devDependency and 'npx --yes vercel ...'. GitHub CLI 'gh' is logged in as karthi-ai-engineer. Repo-local git identity (karthi.ai.engineer@gmail.com) and credential helper (gh auth git-credential) are configured; do not change them. Secrets are in .env.local (restore with 'npx vercel env pull .env.local'). Phase 0 is merged into main (Vite + React + TS + Tailwind v4 + shadcn/ui scaffold, src/core/dates.ts, Supabase schema 0001_init.sql, CI/CD workflows, rulesets).",
+  "permissions": "Everything in docs/process/TEAM_WORKFLOW.md for this phase on karthi-ai-engineer/Structured: create and merge branches and PRs into phase-1-web-mvp; issues, labels, milestones, sub-issues, commit statuses, reviews and comments; the one-time team infrastructure PR into main and rulesets; the release PR into main only after final verification; tag and GitHub release v0.1.0; Discussions announcement if enabled; project board only if the gh token has the project scope. Supabase: apply new migrations to the existing 'structured' project if the design needs them. Vercel: deployments of the existing project only (through the deploy workflow on main). Nothing else outward-facing.",
+  "preflightChecks": "1) 'gh auth status' shows karthi-ai-engineer active; 'git ls-remote origin' works. 2) 'npx --yes supabase projects list' succeeds and lists the 'structured' project. 3) 'npx --yes vercel whoami' succeeds (scope Karthi Labs). 4) .env.local exists and contains VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (names only; never print values). 5) 'gh secret list' includes VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID, PROD_URL.",
+  "scope": "PHASE 1: Web MVP (master PLAN.md section 14 'Phase 1'; features T1-T7, S1-S5 from section 3; data model section 7; UI spec section 9; sync section 12). No login: the app opens straight to the timeline.\nDeliverables:\n1. First app open: if there is no settings row, create it with the browser timezone and seed the 'Rise and Shine' and 'Wind Down' tasks (simple one-off tasks for today until recurrence lands in Phase 3, or seed them as recurring rows if the design includes basic recurrence expansion). Idempotent across devices.\n2. Data layer: repo functions (tasks, settings) + TanStack Query hooks (useDay, useInbox, useSettings) with optimistic mutations and rollback, client-generated UUIDs, and Supabase Realtime subscriptions that invalidate the right query keys.\n3. Day timeline (T4, T5): TaskPill component per PLAN.md section 9.2 (compact timeline, pill height by duration, icon, color, time range, check circle), all-day row, current-time line, completion toggle with animation (T3).\n4. Week strip navigation with swipe/keyboard, 'Today' button (T6).\n5. Task editor (bottom sheet on mobile, dialog on desktop): title, date/inbox, start time, all-day, duration chips, color swatches (PLAN.md section 8 palette), icon picker (lucide + emoji), subtasks (jsonb), notes, delete (T1, T2).\n6. Inbox list with quick add and a 'schedule' action (T7).\n7. Responsive shell: mobile bottom tabs + FAB; desktop sidebar + timeline + inbox panel (S5). Light/dark/system theme (S3). Basic settings page (timezone, 12/24h, week start, day start/end, default duration).\n8. Tests: Vitest for data mapping and any new core logic; Playwright e2e against a local preview for create / edit / complete / delete / inbox flows; a two-browser-context test proving realtime sync (edit in one, appears in the other within 2 s).\n9. Accessibility basics: keyboard navigation, focus management in sheets/dialogs, labels on icon buttons, color contrast in both themes.\nDone when: on desktop and a phone browser you can plan today, check tasks off and use the inbox, and an edit on one device appears on the other within about 1 s; all checks green in CI; production deploy works after the release merge."
+}

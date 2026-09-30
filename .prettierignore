@@ -1,0 +1,10 @@
+dist
+coverage
+.vercel
+node_modules
+package-lock.json
+src/data/database.types.ts
+supabase/.temp
+docs
+.claude
+**/*.md

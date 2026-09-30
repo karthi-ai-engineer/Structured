@@ -740,11 +740,11 @@ npm run build && npx cap sync android   # prepare Android
 Each phase ends with something **deployed and usable**. Work in small commits.
 
 ### Phase 0: Foundation (size: S)
-- [ ] `git init`, scaffold Vite React-TS, Tailwind v4, shadcn/ui, ESLint/Prettier, path alias `@/`
-- [ ] Add `CLAUDE.md` (architecture rules from §6, conventions from §10.3)
-- [ ] Create the Supabase project, write `0001_init.sql` (§7), `supabase db push`, generate types
-- [ ] Vercel project connected to GitHub; env vars set; SPA rewrite in `vercel.json`
-- [ ] `src/core/dates.ts` + tests
+- [x] `git init`, scaffold Vite React-TS, Tailwind v4, shadcn/ui, ESLint/Prettier, path alias `@/`
+- [x] Add `CLAUDE.md` (architecture rules from §6, conventions from §10.3)
+- [x] Create the Supabase project, write `0001_init.sql` (§7), `supabase db push`, generate types
+- [x] Vercel project, env vars set, SPA rewrite in `vercel.json`. Deploys go through GitHub Actions instead of Vercel's Git integration, so the app URL never appears in the public repo.
+- [x] `src/core/dates.ts` + tests
 - **Done when:** a blank app deploys to `https://<app>.vercel.app` and can read and write a test row in Supabase.
 
 ### Phase 1: Web MVP (size: L)

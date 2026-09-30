@@ -1,0 +1,44 @@
+name: Feature request
+description: Suggest a new capability or an improvement.
+title: 'feat: '
+labels: ['type:feature']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check PLAN.md first: the feature may already be planned for a later phase. This
+        repository is public: never paste secrets, app URLs or project names here.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is hard or impossible today? Describe the situation, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should the app do? Include the expected behaviour on web and Android.
+    validations:
+      required: true
+  - type: input
+    id: plan-section
+    attributes:
+      label: PLAN.md section
+      description: The master plan section this relates to, if any.
+      placeholder: 'for example: section 3.2 or section 14, Phase 3'
+    validations:
+      required: false
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: P1 is urgent, P4 is nice to have.
+      options:
+        - P1
+        - P2
+        - P3
+        - P4
+    validations:
+      required: true

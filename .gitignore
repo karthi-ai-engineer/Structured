@@ -19,6 +19,12 @@ test-results/
 supabase/.temp/
 supabase/.branches/
 
+# typescript build info
+*.tsbuildinfo
+
+# personal Claude Code settings (never committed)
+.claude/settings.local.json
+
 # android (Capacitor, Phase 4)
 android/app/build/
 android/build/
