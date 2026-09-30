@@ -385,6 +385,13 @@ export function todayIn(tz: string, now: Date = new Date()): ISODate {
   return date
 }
 
+/** `now` as an ISO 8601 UTC timestamp, for columns such as `completed_at` and `deleted_at`.
+ *  RangeError on an Invalid Date. */
+export function nowIso(now: Date = new Date()): string {
+  requireInstant(now, 'nowIso')
+  return now.toISOString()
+}
+
 /** Wall-clock minutes since local midnight in `tz` at `now`, 0..1439 (seconds are floored).
  *  The value jumps forward in a DST gap and repeats in a repeated hour. */
 export function nowMinutesIn(tz: string, now: Date = new Date()): number {
