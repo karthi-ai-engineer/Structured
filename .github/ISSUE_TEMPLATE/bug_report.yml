@@ -1,0 +1,70 @@
+name: Bug report
+description: Something does not work as expected.
+title: 'bug: '
+labels: ['type:bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. This repository is public: never paste secrets, app URLs,
+        project names or database identifiers here (write "see .env.local" instead).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the problem. Include error messages, with any URLs or keys removed.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What should have happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps, starting from a fresh page load or app start.
+      placeholder: |
+        1. Open the day view
+        2. Drag a task to 09:30
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Where did it happen?
+      multiple: true
+      options:
+        - Web
+        - Android
+        - MCP server
+    validations:
+      required: true
+  - type: dropdown
+    id: phase
+    attributes:
+      label: Phase
+      description: The roadmap phase (PLAN.md section 14) that owns the affected feature, if known.
+      options:
+        - 'Phase 0: Foundation'
+        - 'Phase 1: Web MVP'
+        - 'Phase 2: MCP server'
+        - 'Phase 3: Structured parity'
+        - 'Phase 4: Android APK'
+        - 'Phase 5: Work tracking'
+        - 'Phase 6: Extras'
+        - Not sure
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser or device, operating system and app version or commit, if known.
+    validations:
+      required: false
