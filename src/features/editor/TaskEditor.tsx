@@ -1,0 +1,361 @@
+import { useState, type FormEvent } from 'react'
+import { Check, Inbox, Plus, Trash2, X } from 'lucide-react'
+import { formatDuration, nowMinutesIn, todayIn } from '@/core/dates'
+import {
+  DEFAULT_TASK_COLOR,
+  DURATION_PRESETS,
+  TASK_COLORS,
+  colorHex,
+  nextStartTime,
+  normalizeTitle,
+  validateDraft,
+  type Subtask,
+  type TaskDraft,
+} from '@/core/tasks'
+import { DEFAULT_ICON, TASK_ICONS, TaskIcon } from '@/components/TaskIcon'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
+import { useAppSettings } from '@/data/queries/settings'
+import { useTaskActions } from '@/data/queries/tasks'
+import type { EditorRequest } from '@/features/editor/editorContext'
+import { cn } from '@/lib/utils'
+
+function initialDraft(request: EditorRequest, defaultDuration: number): TaskDraft {
+  if (request.mode === 'edit') {
+    const { title, notes, icon, color, subtasks, date, startTime, durationMin, isAllDay } =
+      request.task
+    return { title, notes, icon, color, subtasks, date, startTime, durationMin, isAllDay }
+  }
+  return {
+    title: '',
+    notes: null,
+    icon: null,
+    color: DEFAULT_TASK_COLOR,
+    subtasks: [],
+    date: null,
+    startTime: null,
+    durationMin: defaultDuration,
+    isAllDay: false,
+    ...request.defaults,
+  }
+}
+
+export function TaskEditor({ request, onClose }: { request: EditorRequest; onClose: () => void }) {
+  const settings = useAppSettings()
+  const actions = useTaskActions()
+  const [draft, setDraft] = useState<TaskDraft>(() =>
+    initialDraft(request, settings.defaultDuration),
+  )
+  const [showIcons, setShowIcons] = useState(false)
+  const [newSubtask, setNewSubtask] = useState('')
+  const set = (patch: Partial<TaskDraft>) => setDraft((d) => ({ ...d, ...patch }))
+
+  const problems = validateDraft(draft)
+  const isEdit = request.mode === 'edit'
+  const scheduled = draft.date !== null
+  const accent = colorHex(draft.color)
+
+  function save(event?: FormEvent) {
+    event?.preventDefault()
+    if (problems.length > 0) return
+    const clean: TaskDraft = {
+      ...draft,
+      title: normalizeTitle(draft.title),
+      notes: draft.notes?.trim() ? draft.notes.trim() : null,
+      startTime: draft.date === null || draft.isAllDay ? null : draft.startTime,
+      isAllDay: draft.date !== null && draft.isAllDay,
+    }
+    if (request.mode === 'edit') actions.update(request.task, clean)
+    else actions.create(crypto.randomUUID(), clean)
+    onClose()
+  }
+
+  function addSubtask() {
+    const title = normalizeTitle(newSubtask)
+    if (!title) return
+    const item: Subtask = { id: crypto.randomUUID(), title, done: false }
+    set({ subtasks: [...draft.subtasks, item] })
+    setNewSubtask('')
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => (open ? null : onClose())}>
+      <DialogContent
+        className={cn(
+          'max-h-[92svh] gap-5 overflow-y-auto sm:max-w-lg',
+          // Phones: a bottom sheet.
+          'max-sm:top-auto max-sm:bottom-0 max-sm:left-0 max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none',
+          'max-sm:duration-200 max-sm:data-open:zoom-in-100 max-sm:data-open:slide-in-from-bottom max-sm:data-closed:zoom-out-100 max-sm:data-closed:slide-out-to-bottom',
+        )}
+      >
+        <DialogTitle>{isEdit ? 'Edit task' : 'New task'}</DialogTitle>
+        <DialogDescription className="sr-only">
+          Title, time, duration, color, icon, subtasks and notes of the task.
+        </DialogDescription>
+
+        <form onSubmit={save} className="flex flex-col gap-5">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              aria-label="Choose icon"
+              aria-expanded={showIcons}
+              onClick={() => setShowIcons((v) => !v)}
+              className="flex size-11 shrink-0 items-center justify-center rounded-full text-white"
+              style={{ backgroundColor: accent }}
+            >
+              <TaskIcon icon={draft.icon} />
+            </button>
+            <Input
+              autoFocus
+              aria-label="Title"
+              placeholder="What do you want to do?"
+              value={draft.title}
+              maxLength={200}
+              onChange={(e) => set({ title: e.target.value })}
+              className="h-11 text-base"
+            />
+          </div>
+
+          {showIcons ? (
+            <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-8 gap-1">
+                {Object.keys(TASK_ICONS).map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    aria-label={`Icon ${name}`}
+                    aria-pressed={(draft.icon ?? DEFAULT_ICON) === name}
+                    onClick={() => {
+                      set({ icon: name })
+                      setShowIcons(false)
+                    }}
+                    className={cn(
+                      'flex aspect-square items-center justify-center rounded-md hover:bg-muted',
+                      (draft.icon ?? DEFAULT_ICON) === name && 'bg-muted ring-2 ring-ring',
+                    )}
+                  >
+                    <TaskIcon icon={name} className="size-4" />
+                  </button>
+                ))}
+              </div>
+              <Input
+                aria-label="Or type an emoji"
+                placeholder="Or type an emoji"
+                maxLength={8}
+                onChange={(e) => {
+                  const value = e.target.value.trim()
+                  if (value) set({ icon: value })
+                }}
+              />
+            </div>
+          ) : null}
+
+          <fieldset className="flex flex-wrap gap-2">
+            <legend className="sr-only">Color</legend>
+            {TASK_COLORS.map((c) => (
+              <button
+                key={c.name}
+                type="button"
+                aria-label={`Color ${c.name}`}
+                aria-pressed={draft.color === c.name}
+                onClick={() => set({ color: c.name })}
+                className="flex size-8 items-center justify-center rounded-full"
+                style={{ backgroundColor: c.hex }}
+              >
+                {draft.color === c.name ? <Check className="size-4 text-white" /> : null}
+              </button>
+            ))}
+          </fieldset>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <Label htmlFor="task-scheduled">Scheduled</Label>
+              <Switch
+                id="task-scheduled"
+                checked={scheduled}
+                onCheckedChange={(on) =>
+                  set(
+                    on
+                      ? {
+                          date: todayIn(settings.timezone),
+                          startTime:
+                            draft.startTime ?? nextStartTime(nowMinutesIn(settings.timezone)),
+                        }
+                      : { date: null, startTime: null, isAllDay: false },
+                  )
+                }
+              />
+            </div>
+            {scheduled ? null : (
+              <p className="flex items-center gap-2 text-muted-foreground">
+                <Inbox className="size-4" /> Saved to the inbox, to schedule later.
+              </p>
+            )}
+            {scheduled ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="task-date">Date</Label>
+                    <Input
+                      id="task-date"
+                      type="date"
+                      value={draft.date ?? ''}
+                      onChange={(e) => set({ date: e.target.value || null })}
+                    />
+                  </div>
+                  {draft.isAllDay ? null : (
+                    <div className="flex flex-col gap-1.5">
+                      <Label htmlFor="task-time">Start</Label>
+                      <Input
+                        id="task-time"
+                        type="time"
+                        value={draft.startTime ?? ''}
+                        onChange={(e) => set({ startTime: e.target.value || null })}
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="task-all-day">All day</Label>
+                  <Switch
+                    id="task-all-day"
+                    checked={draft.isAllDay}
+                    onCheckedChange={(on) => set({ isAllDay: on })}
+                  />
+                </div>
+              </>
+            ) : null}
+          </div>
+
+          {draft.isAllDay ? null : (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-2 text-sm font-medium">Duration</legend>
+              <div className="flex flex-wrap gap-2">
+                {DURATION_PRESETS.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    aria-pressed={draft.durationMin === m}
+                    onClick={() => set({ durationMin: m })}
+                    className={cn(
+                      'min-h-9 rounded-full border px-3 text-sm',
+                      draft.durationMin === m ? 'border-transparent text-white' : 'hover:bg-muted',
+                    )}
+                    style={draft.durationMin === m ? { backgroundColor: accent } : undefined}
+                  >
+                    {formatDuration(m)}
+                  </button>
+                ))}
+                <Input
+                  type="number"
+                  aria-label="Custom duration in minutes"
+                  min={0}
+                  max={1440}
+                  value={draft.durationMin}
+                  onChange={(e) => set({ durationMin: Math.round(Number(e.target.value)) })}
+                  className="h-9 w-24"
+                />
+              </div>
+            </fieldset>
+          )}
+
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-2 text-sm font-medium">Subtasks</legend>
+            {draft.subtasks.map((s) => (
+              <div key={s.id} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  aria-label={`Done: ${s.title}`}
+                  checked={s.done}
+                  onChange={() =>
+                    set({
+                      subtasks: draft.subtasks.map((x) =>
+                        x.id === s.id ? { ...x, done: !x.done } : x,
+                      ),
+                    })
+                  }
+                  className="size-4 accent-current"
+                />
+                <span className={cn('flex-1', s.done && 'text-muted-foreground line-through')}>
+                  {s.title}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Remove subtask ${s.title}`}
+                  onClick={() => set({ subtasks: draft.subtasks.filter((x) => x.id !== s.id) })}
+                  className="rounded p-1 text-muted-foreground hover:bg-muted"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            ))}
+            <div className="flex gap-2">
+              <Input
+                aria-label="New subtask"
+                placeholder="Add a subtask"
+                value={newSubtask}
+                onChange={(e) => setNewSubtask(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addSubtask()
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label="Add subtask"
+                onClick={addSubtask}
+              >
+                <Plus />
+              </Button>
+            </div>
+          </fieldset>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="task-notes">Notes</Label>
+            <Textarea
+              id="task-notes"
+              rows={3}
+              value={draft.notes ?? ''}
+              onChange={(e) => set({ notes: e.target.value })}
+            />
+          </div>
+
+          {problems.length > 0 && draft.title.trim() !== '' ? (
+            <ul className="text-sm text-destructive">
+              {problems.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          ) : null}
+
+          <div className="flex items-center gap-2">
+            {request.mode === 'edit' ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-destructive"
+                onClick={() => {
+                  actions.remove(request.task)
+                  onClose()
+                }}
+              >
+                <Trash2 data-icon="inline-start" /> Delete
+              </Button>
+            ) : null}
+            <Button type="submit" className="ml-auto min-h-11 px-6" disabled={problems.length > 0}>
+              {isEdit ? 'Save' : 'Add task'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
