@@ -69,3 +69,88 @@ npm run typecheck && npm run lint && npm run build
 - `@types/node` was already a create-vite devDependency; the explicit `@^24` install moved it to 24.19.0.
 - No tests or `format` scripts exist yet (WP2 and WP3).
 - Commits are GPG-signed by the machine's global key (`%G?` = `G` locally); GitHub shows them as "Unverified" (open question 1).
+
+---
+
+## WP2: Tailwind v4, shadcn/ui, ESLint, Prettier, folder skeleton, architecture rules, CLAUDE.md part 1
+
+**Date:** 2026-09-30 (UTC+9). **Branch:** `phase-0-foundation`. **Tracking issue:** #1. **PR:** #2 (draft).
+
+### What was done
+- **Tailwind CSS v4** (commit `feat: add Tailwind CSS v4 and shadcn/ui`):
+  - `tailwindcss` and `@tailwindcss/vite` 4.3.3 (devDependencies); `tailwindcss()` added to the `vite.config.ts` plugins.
+  - `src/styles/index.css` is the entry, imported by `src/main.tsx` (`import '@/styles/index.css'`). It has the three `@source not` lines for `docs`, `PLAN.md` and `.claude` (P15).
+- **shadcn/ui 4.21.0**, same commit:
+  - `components.json`: style `radix-nova`, `tailwind.css` = `src/styles/index.css`, base colour neutral, CSS variables, icon library lucide, aliases under `@/`. No hand fix was needed.
+  - `src/components/ui/button.tsx` (Radix `Slot`, `cva`) and `src/lib/utils.ts` (`export { cn } from 'cn'`).
+  - Runtime dependencies: `radix-ui`, `class-variance-authority`, `cn`, `lucide-react`. Build-time packages were moved to devDependencies: `shadcn`, `tw-animate-css`, `@fontsource-variable/geist` (§5.4, P12).
+  - `tsconfig.app.json` and `tsconfig.json` are unchanged by shadcn (no `baseUrl`).
+  - `src/App.tsx` renders the shadcn `Button` (`size="lg"`, `variant="outline"`, `min-h-11`, disabled, "Check again") under the "Structured" heading, with the §6.6 layout classes. WP6 wires it to the database check.
+- **ESLint and Prettier** (commit `chore: add ESLint and Prettier configuration`):
+  - `eslint.config.js` is §5.8: type-aware `recommendedTypeChecked` with `projectService`, `consistent-type-imports`, `no-explicit-any`, plus the boundary and clock rules (D0-3). `react-refresh/only-export-components` is off for `src/components/ui/**`. JS files get Node globals and `disableTypeChecked`. `eslint-config-prettier/flat` comes last.
+  - `.prettierrc.json` and `.prettierignore` are exactly §5.9 (Markdown, `docs/`, `.claude/`, the lockfile and generated types are ignored).
+  - Scripts `format` (`prettier --write .`) and `format:check` (`prettier --check .`); `lint` was already `eslint . --max-warnings=0` (WP1).
+  - `npm run format` ran once. It changed only `eslint.config.js`, `src/components/ui/button.tsx` and `src/lib/utils.ts` (quote style), and `src/styles/index.css` (indentation). `git status` showed nothing under `docs/`, `.claude/` or any `*.md`.
+  - Ranges raised to the §2.1 minimums: `typescript-eslint` `^8.71.0` (was `^8.69.0`), `eslint` `^10.11.0` (was `^10.10.0`). Installed: ESLint 10.11.0, typescript-eslint 8.71.0, Prettier 3.9.9, prettier-plugin-tailwindcss 0.8.1, eslint-config-prettier 10.1.8.
+- **Folder skeleton** (commit `chore: add folder skeleton`): README-only placeholders (3 to 4 lines each: purpose and import rules) in `src/features`, `src/stores`, `src/data/queries`, `server` and `api` (P16). `src/core`, `src/data/repo`, `src/platform` and `supabase/migrations` get real files in WP4 to WP6. No `src/core/README.md` stand-in was created (optional in the plan), so WP3 has nothing to remove.
+- **CLAUDE.md part 1** (commit `docs: add architecture and conventions to contributor guide`): only the trailing placeholder comment was replaced. New sections:
+  - Architecture (folder table, README-only placeholders, and the r1 rule that new top-level TS folders need a tsconfig referenced from `tsconfig.json`)
+  - Import rules
+  - Code conventions
+  - Data conventions, including the r1 note that the existing `settings` row cannot trigger the Phase 1 seeding (use a marker such as `settings.seeded_at`)
+  - Database migrations (D0-8 naming and the new-table checklist)
+  - Windows and shell rules
+  - Session-start ritual
+
+  The owner's "balanced profile" paragraph (commit `28df4fd`) is kept verbatim.
+
+### Commands run
+```
+npm install -D tailwindcss @tailwindcss/vite
+npx --yes shadcn@4.21.0 init --template vite --base radix --preset nova --yes --no-monorepo < /dev/null   # exact working command; no prompt, exit 0
+npm install -D shadcn@^4.21.0 tw-animate-css@^1.4.0 @fontsource-variable/geist@^5.3.0 typescript-eslint@^8.71.0 eslint@^10.11.0
+npm install -D eslint-config-prettier prettier prettier-plugin-tailwindcss
+npm pkg set "scripts.format=prettier --write ." "scripts.format:check=prettier --check ."
+npm run format
+npm run lint && npm run format:check && npm run typecheck && npm run build
+npm run dev   # then HTTP checks, then taskkill /PID <pid> /T /F
+```
+
+### Verification results
+| Check | Result |
+|---|---|
+| `npm run lint` (`--max-warnings=0`) | exit 0. Linted `eslint.config.js`, `vite.config.ts`, `src/App.tsx`, `src/main.tsx`, `src/lib/utils.ts` and `src/components/ui/button.tsx` with the type-aware rules active (`--print-config` shows `projectService: true`) |
+| `npm run format:check` | exit 0 ("All matched files use Prettier code style!") |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 (CSS about 23 kB, Geist woff2 files emitted) |
+| `npx tsc --showConfig -p tsconfig.app.json` | no `baseUrl` (the only match in the file is the WP1 comment) |
+| Lockfile natives | `@tailwindcss/oxide-`, `lightningcss-` and `@rolldown/binding-` each have win32-x64, linux-x64-gnu and darwin-arm64 entries |
+| New files: BOM / CR bytes | none (counted with Node) |
+| Dev server | `/` returns 200 with the privacy metas. `/src/App.tsx` contains the `Button` with "Check again", `size: "lg"`, `variant: "outline"`, `min-h-11` and `disabled`. The served `index.css` contains `.min-h-11`, `disabled:opacity-50`, `bg-background`, `--radius` and `Geist Variable`. |
+| Ports after the check | nothing listening on 5173 / 4173 (stopped with `taskkill /PID <pid> /T /F`) |
+| `git diff 1195168 -- CLAUDE.md \| grep '^-[^-]'` | prints only the placeholder comment line |
+| `git diff 28df4fd --stat -- PLAN.md README.md .claude docs/process docs/phases/phase-1 <phase-0 planning inputs>` | empty |
+
+**Negative lint tests.** Each probe was a temporary, uncommitted file, linted with `npx eslint <file>` and then deleted; `git status` was clean afterwards.
+
+| # | File and content | Result (exit 1) |
+|---|---|---|
+| 1 | `src/core/tmp.ts` importing `react` | `no-restricted-imports`: "src/core is pure TypeScript: no React" |
+| 2 | `src/core/tmp.ts` importing `@/lib/utils` | `no-restricted-imports`: "src/core uses relative imports with .ts extensions only (plain Node and Vercel functions cannot resolve @/)" and "src/core may only import from src/core" |
+| 3 | `src/core/tmp.ts` with `await import('./x.ts')` | `no-restricted-syntax`: "No dynamic import() in src/core" |
+| 4 | `src/lib/tmp.ts` importing `../../server/x` | `no-restricted-imports`: "src/ must never import server/ (PLAN.md section 6)" |
+| 5 | `src/components/Tmp.tsx` importing `@supabase/supabase-js` | `no-restricted-imports`: "Only src/data may use Supabase" |
+| 6 | `src/components/Tmp.tsx` containing `new Date()` | `no-restricted-syntax`: "Read the clock only through src/core/dates.ts (todayIn/nowMinutesIn) or pass an explicit instant" |
+
+Probes 4 and 5 also report `@typescript-eslint/no-unsafe-assignment`, because the imported module does not exist (`server/x`) or is not installed yet (`@supabase/supabase-js`, WP5). This is expected; the configured message is present in both.
+
+### Deviations
+1. **Order of `src/styles/index.css`.** shadcn inserted its three `@import`s (`tw-animate-css`, `shadcn/tailwind.css`, `@fontsource-variable/geist`) and `@custom-variant dark` between `@import "tailwindcss"` and the `@source not` lines. The file was reordered so that all `@import`s come first (CSS requires imports before other rules), followed by the three `@source not` lines with a comment, then shadcn's variant, theme and tokens. The four §5.9 lines are all present; only their position differs.
+2. **shadcn dark tokens kept.** `init` also wrote a `.dark { … }` token block and `@custom-variant dark`. They are kept for Phase 1 dark mode. Nothing applies the `.dark` class yet, and `index.html` keeps `color-scheme: light` (F12).
+3. **`button.tsx` imports `cn` from the `cn` package** directly (shadcn 4.21 output), not from `@/lib/utils`. `src/lib/utils.ts` still re-exports it (AC 6), as §2.1 anticipated.
+4. **Dev-server check over HTTP.** The styled button was verified from the served modules and generated CSS (see the table), not from a browser screenshot. For a visual check, run `npm run dev` and open the local port. The page shows "Structured" and a disabled, outlined "Check again" button in Geist. Stop the server with `taskkill` afterwards.
+
+### Notes for testers
+- The six negative lint probes can be repeated with any file name inside the same folders. The files must be under `src/`, so that the `tsconfig.app.json` project service picks them up.
+- `npx shadcn add <component>` uses the pinned devDependency (4.21.0). Run `npm run format` afterwards: shadcn writes double quotes, and Prettier normalises them.
+- There are still no tests, `check:*` scripts or CI (WP3). The subset that exists (`lint`, `format:check`, `typecheck`, `build`) passes.
