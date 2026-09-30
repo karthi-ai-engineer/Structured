@@ -159,3 +159,127 @@ At the start of every session, work package and fix round:
 4. Run `npm ci` if `package-lock.json` changed.
 5. `npm run db:ping` prints `ok` (a paused project: see the recovery steps in `HANDOFF.md`).
 6. If environment keys changed on another machine, run `npm run env:sync-vercel` (a read-only report) first, then `npx --yes vercel@61.1.0 env pull .env.local --yes`.
+
+## Work package checklist
+**Opening:** the session-start ritual above.
+
+**Closing.** A work package or fix round is not done until all of these have happened:
+1. `npm run verify` passes.
+2. `HANDOFF.md` status is updated: phase and branch, "Last updated" with time and zone (for example `2026-09-30 21:40 UTC+9`), done, next, blockers, the IDs (tracking issue, PR, ruleset) and the pipeline `resumeFrom` / `skipWPs`.
+3. A section is appended to the phase's `DEVLOG.md`: what was done, commands run, deviations, and notes for testers. Mask every value.
+4. Conventional commits, with no AI attribution. `npm run check:commits` and `npm run check:leaks` pass.
+5. `git push origin <phase branch>`.
+6. The tracking issue is updated: re-read its body, tick **only** this work package, and write it back (run `check:commits --text-file` on the new body first).
+7. Every dev or preview server is stopped (`taskkill /PID <pid> /T /F`), and the ports are free.
+
+## Commands
+Run these from the repo root, in Git Bash on Windows. `npm run verify` is the full local gate, and CI runs the same steps.
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Vite dev server on port 5173 (strict: fails if the port is taken) |
+| `npm run build` | `tsc -b`, then the production bundle in `dist/`. With `.env.local` present the bundle contains the real Supabase URL and publishable key, so never commit, upload or paste `dist/`. |
+| `npm run preview` | Serves `dist/` on port 4173 (strict) |
+| `npm run typecheck` | `tsc -b` over the app, node and test projects |
+| `npm run lint` | Type-aware ESLint with the architecture rules, 0 warnings allowed |
+| `npm run format` | Prettier, writing (Markdown, `docs/` and `.claude/` are ignored) |
+| `npm run format:check` | Prettier, check only (CI) |
+| `npm test` | Unit tests (Vitest). Hermetic: process zone `America/St_Johns`, `fetch` rejects, `VITE_*` blanked |
+| `npm run test:watch` | Unit tests in watch mode |
+| `npm run test:coverage` | Unit tests plus the `src/core` coverage thresholds (95 % lines and statements, 100 % functions, 90 % branches) |
+| `npm run test:integration` | Opt-in tests against the real database. Needs `.env.local`, never runs in CI, and touches only `__test__` rows. |
+| `npm run check` | The four repo checks below |
+| `npm run check:hygiene` | No BOM, valid UTF-8, no CR; lockfile native bindings for Windows, Linux and macOS; the Node and Vercel CLI pins; the `ci-verify` invariants |
+| `npm run check:leaks` | Secrets, hosts, IDs and the project name in files and commit messages. `-- --stdin` scans piped text (CI logs); `-- --files <paths>` scans given files. |
+| `npm run check:commits` | AI attribution and the author e-mail allowlist over the commit range. `-- --text-file <file>` also checks PR, issue or release text. |
+| `npm run check:core` | Every `src/core` module loads in plain Node |
+| `npm run verify` | typecheck, lint, format:check, test:coverage, build and check. Run it before every push. |
+| `npm run db:setup` | Idempotent Supabase bootstrap: creates or reuses the project `structured` and writes `.env.local` (prints `KEY: set` lines only) |
+| `npm run db:link` | Links the Supabase CLI to `SUPABASE_PROJECT_REF` |
+| `npm run db:push` | Applies new migrations. `node scripts/supabase.mjs push --dry-run` previews them. |
+| `npm run db:migrations` | Lists local and remote migration versions |
+| `npm run db:types` | Regenerates `src/data/database.types.ts` (UTF-8, LF) |
+| `npm run db:ping` | One REST probe: `db: ok (200)`, or `PAUSED (540)` |
+| `npm run env:check` | Status of the 7 app keys in `.env.local` (`ok`, `missing`, `empty`, `placeholder`, `whitespace`); never values |
+| `npm run env:sync-vercel` | Read-only report: `.env.local` against the Vercel env matrix. `-- --apply` adds missing rows; `-- --apply --force` also overwrites rows that differ. |
+
+Other tools:
+- `node scripts/supabase.mjs settings`: whether the `settings` row exists, with its time zone.
+- `node scripts/lib/env-file.mjs get .env.local <KEY>` prints one raw value for piping (never to the screen). `… set <KEY>` reads the value from stdin.
+- `bash scripts/ci/deploy-prod.sh`: the production deploy, shared by CI and local runs (see `HANDOFF.md`).
+- `node scripts/ci/smoke.mjs`: the production smoke check. It needs `PROD_URL`, `EXPECTED_SHA` and `SUPABASE_ENV_FILE`, and prints paths only.
+- `npx shadcn add <name>`: adds a shadcn/ui component (the pinned devDependency). Run `npm run format` afterwards.
+
+## Environment variables
+Values live only in `.env.local` (gitignored), in the Vercel project and in GitHub secrets. `.env.example` lists the names. `npm run env:sync-vercel` enforces this matrix:
+
+| Variable | `.env.local` | Vercel production | Vercel preview | Vercel development | GitHub secret |
+|---|---|---|---|---|---|
+| `VITE_SUPABASE_URL` | yes | Config | Config | Config | – |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | yes | Config | Config | Config | – |
+| `SUPABASE_SECRET_KEY` | yes | Secret | – | Config | – |
+| `SUPABASE_DB_PASSWORD` | yes | – | – | Config | – |
+| `SUPABASE_PROJECT_REF` | yes | – | – | Config | – |
+| `VERCEL_PROJECT_NAME` | yes | – | – | Config | – |
+| `PROD_URL` | yes | – | – | Config | yes |
+| `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | in `.vercel/project.json` | – | – | – | yes |
+| `VERCEL_TOKEN` | – | – | – | – | yes |
+
+- **The Vercel development env is the source of truth** for `.env.local` on every machine. Run `npm run env:sync-vercel` (the report) before `npx --yes vercel@61.1.0 env pull .env.local --yes`.
+- **Sync a new local-only key before anyone pulls:** `npm run env:sync-vercel -- --apply`. Otherwise the next pull on another machine does not have it.
+- `--apply` never overwrites a remote value, so a machine with an old `.env.local` cannot undo a rotation. A deliberate overwrite is `-- --apply --force`, or `npx --yes vercel@61.1.0 env rm <NAME> <target> --yes` followed by `--apply`.
+- `VITE_*` values are bundled into the browser code, so they must be **Config**, never Secret, in production. A Secret is only a placeholder at build time, and the production build refuses it.
+- The secret key never gets a `VITE_` prefix, and build steps never read it.
+- `vercel env pull` merges into `.env.local` and adds `VERCEL_OIDC_TOKEN` (a short-lived token). Treat it like a secret; the checks ignore other `VERCEL_*` keys.
+- A new app key goes into all of these in one change: `.env.example`, `APP_KEYS` in `scripts/lib/env-file.mjs`, `MATRIX` in `scripts/sync-vercel-env.mjs`, and the table above.
+
+## CI/CD flow
+1. Work happens on the phase branch `phase-<n>-<slug>` (from Phase 1: feature and fix PRs into it, see the team workflow), in small conventional commits.
+2. Push after every work package. `CI / ci-verify` runs on every push and on every PR (opened, synchronize, reopened, edited), whatever its base branch.
+3. The phase PR (`Closes #<tracking issue>`) stays a draft until the Ship stage.
+4. The `main` ruleset ("main protection") requires a PR (0 approvals, merge commits only) and a green `ci-verify`, and blocks force-pushes and deletion. Nobody can bypass it.
+5. A merge into `main` triggers `Deploy` (`.github/workflows/deploy.yml`). It runs only from the head of `main`: verify, Vercel pull, build (with the env guard), exact-value bundle check, prebuilt deploy, then the smoke check (build SHA, routes, headers, database probe). It never prints a URL.
+6. Tag and release: `v0.0.1` for Phase 0, `v0.<n>.0` after that.
+7. CodeQL (default setup) analyses PRs and `main`. Dependabot opens grouped weekly PRs for npm and GitHub Actions, and they must pass `ci-verify` like any other PR.
+
+Rules:
+- **`ci-verify` is the required check.** Never rename the job, never reuse its name for another job, never add `paths` or `paths-ignore` filters to `ci.yml`, and never use `[skip ci]`. Each of these leaves the required check pending, and the merge into `main` stays blocked. `check:hygiene` checks the name and the missing filters.
+- **Every merge into `main` deploys production, and so does every merged Dependabot PR.** Merge only what should go live.
+- **Bot PRs.** The title and body of a bot-authored PR (Dependabot) are not scanned by `check:commits`, because they quote upstream release notes. Its commit messages and authors are always checked.
+- **The Vercel CLI is pinned** to exactly `vercel@61.1.0` in `.github/workflows/deploy.yml`, `scripts/ci/deploy-prod.sh` and `scripts/lib/vercel.mjs`. Bump all three in one commit (`check:hygiene` fails if they differ), and update the version in the docs that quote it.
+- **Deploys come only from GitHub Actions.** The Vercel Git integration is off, and `vercel.json` has `git.deploymentEnabled: false`. Redeploy with `gh workflow run deploy.yml --ref main`. A local deploy uses the same script (see `HANDOFF.md`).
+- **After merging a Dependabot npm PR, run `npm ci` on Windows**, then `npm run verify`.
+
+### When a Dependabot PR is blocked
+- **`check:hygiene` rejects the lockfile.** Dependabot regenerates it on Linux, which can drop the Windows or macOS native bindings. On Windows, in Git Bash:
+  1. `gh pr checkout <n>`
+  2. `rm -rf node_modules && npm install`, then `npm run check:hygiene`
+  3. If it still fails: `rm -rf node_modules package-lock.json && npm install`. This re-resolves within the caret ranges, which is acceptable for a minor/patch group.
+  4. `npm run verify`
+  5. Commit `chore: regenerate lockfile with all platform bindings` and `git push` to the Dependabot branch.
+
+  Dependabot stops rebasing that PR afterwards, which is expected. Merge it once `ci-verify` is green.
+- **The PR title or body trips the attribution scan.** This cannot happen for bot-authored PRs, because their title and body are skipped.
+- **A commit message trips `check:leaks` or `check:commits`** (third-party text). The message cannot be fixed on that branch. Close the PR and make the bump by hand in a normal PR.
+
+## Secrets
+- Read values, never print them. `node scripts/lib/env-file.mjs get .env.local <KEY>` writes one raw value for a shell variable or a pipe (`… | gh secret set <NAME>`). `… set <KEY>` reads the value from stdin.
+- Write output that can contain a secret, a URL, an ID or the project name (the Vercel and Supabase CLIs, `vercel env pull`, deploy logs) to a file in a scratch folder. Let a script read it, print only names, counts or statuses, and delete the file afterwards.
+- Mask values in docs, test reports, `DEVLOG.md` and `HANDOFF.md`: write "see `.env.local`".
+- Never paste a key-shaped string, a `*.vercel.app` or Supabase host, a Vercel `prj_`/`team_` ID or an attribution trailer into a file, **even a fake one**. Tests build such fixtures at runtime by concatenation.
+- In GitHub Actions, mask derived values with `::add-mask::` before any step could print them, and pass PR text to scripts only through `env:`.
+- Before every push, run `npm run check:leaks` and `npm run check:commits`.
+- Before any `gh pr|issue|release create|edit`, write the text to a file and run `node scripts/checks/commits.mjs --text-file <file>` and the PR-text word check, which must print nothing:
+  ```bash
+  sed -E 's/karthi-ai-engineer//g; s/CLAUDE\.md//g' <file> | grep -niwE 'ai|claude|anthropic|llm'
+  ```
+- `dist/` after a local build and `.vercel/` after a local deploy contain real values. Both are gitignored: never commit, upload or paste them.
+- If something leaks, follow the leak-response runbook in `HANDOFF.md`. Rotation is the fix, because history on `main` cannot be rewritten.
+
+## Runbooks
+In `HANDOFF.md`, section "Recovery and runbooks":
+- paused database (HTTP 540)
+- database commands that cannot connect (outbound TCP 5432)
+- production rollback
+- leak response
+- a GPG signing failure (stop and ask the owner)
