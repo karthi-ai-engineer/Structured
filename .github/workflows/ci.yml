@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: ['**'] # branches only; tag pushes are ignored
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+# Never add paths / paths-ignore here: the required check would stay pending (P36).
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verify:
+    name: ci-verify # required status check in the main ruleset; never rename or reuse this name
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COMMIT_RANGE: ${{ github.event_name == 'pull_request' && format('{0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || '' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # commit-range scans (leaks, attribution, author)
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Format check
+        run: npm run format:check
+      - name: Unit tests (coverage thresholds for src/core)
+        run: npm run test:coverage
+      - name: Build (unconfigured by design)
+        run: npm run build
+      - name: Repo hygiene (encoding, line endings, lockfile natives, pins)
+        run: npm run check:hygiene
+      - name: Core loads in plain Node
+        run: npm run check:core
+      - name: Leak check (generic patterns, files and commit messages)
+        run: npm run check:leaks
+      - name: Commit and PR text checks (attribution trailers, author e-mail)
+        env:
+          # Bot PRs (Dependabot) quote upstream release notes in the body, which can contain
+          # third-party trailers. Their title and body are skipped; commits and authors are always checked.
+          PR_TITLE: ${{ github.event.pull_request.user.type != 'Bot' && github.event.pull_request.title || '' }}
+          PR_BODY: ${{ github.event.pull_request.user.type != 'Bot' && github.event.pull_request.body || '' }}
+        run: npm run check:commits
