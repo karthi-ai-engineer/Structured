@@ -10,7 +10,9 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 // CLAUDE.md ("Import rules") documents them for humans.
 
 const noServer = {
-  group: ['**/server/**', 'server', 'server/*'],
+  // 'server' matches any path segment of that name, so React's own entry point is re-allowed
+  // (the badge and boundary tests render with react-dom/server).
+  group: ['**/server/**', 'server', 'server/*', '!react-dom/server'],
   message: 'src/ must never import server/ (PLAN.md section 6).',
 }
 const supabaseOnlyInData = { group: ['@supabase/*'], message: 'Only src/data may use Supabase.' }
