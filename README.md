@@ -129,6 +129,7 @@ Clone that branch with `git clone -b <branch> …`. Its `HANDOFF.md` is the live
 | `npm test` / `npm run test:watch` | Unit tests |
 | `npm run test:coverage` | Unit tests with the `src/core` coverage thresholds |
 | `npm run test:integration` | Opt-in tests against the real database (needs `.env.local`) |
+| `npm run test:e2e` | Opt-in end-to-end tests in Microsoft Edge against the dev server and the real database (needs `.env.local`) |
 | `npm run check` | Repo checks: encoding and lockfile hygiene, leaks, commit attribution, plain-Node core |
 | `npm run verify` | The local gate before a push: typecheck, lint, format check, tests with coverage, build and the repo checks (what CI runs) |
 | `npm run db:push` / `npm run db:migrations` | Apply / list database migrations |
