@@ -403,3 +403,118 @@ gh run list -b phase-0-foundation; gh run view <id> --log | node scripts/checks/
   - Between two midnights of a repeated midnight, `todayIn` is the earlier date again, and `msUntilNextDayIn` points at the second midnight.
 - **Vitest JSON reporter.** `npx vitest run --reporter=json` writes `.vitest/json/output.json` in the repo, and that folder is not in `.gitignore`. Delete it after use (done in this WP).
 - **The ESLint clock rule also covers the tests** under `src/core/__tests__` (no `new Date()` without arguments and no `Date.now()`). Use `new Date('<ISO>')`, `vi.setSystemTime`, or `String.fromCharCode` for Unicode inputs, so that the sources stay ASCII.
+
+---
+
+## WP5: Supabase project, migration, types, env tooling and integration tests
+
+**Date:** 2026-09-30 (UTC+9). **Branch:** `phase-0-foundation`. **Tracking issue:** #1. **PR:** #2 (draft).
+
+### What was done
+- **Supabase CLI and client** (commit `chore: add Supabase CLI configuration and scripts`):
+  - `supabase` 2.118.0 (devDependency) and `@supabase/supabase-js` 2.117.2 (dependency). The lockfile has all eight `@supabase/cli-*` platform entries, so `check:hygiene` finds windows-x64, linux-x64 and darwin-arm64.
+  - `npx supabase init` wrote `supabase/config.toml` (local `project_id = "structured"`, no project ref) and `supabase/.gitignore`.
+  - `scripts/lib/supabase-cli.mjs` (new shared helper, deviation 1):
+    - resolves the CLI's `bin` from the local package and spawns it with `process.execPath`, without a shell
+    - adds `--agent no` to every call, ignores stdin (a prompt reads EOF) and sets `NO_COLOR=1`
+    - `parseJsonOutput` and `rows()` normalise both JSON shapes (the bare array from `-o json`, the envelope from `--output-format json`); `singleObject()` does the same for a create response
+    - `runReadOnlyJson` tries `-o json`, then `--output-format json` once; it is never used for `projects create`
+    - `generatePassword()`: 32 characters, uniform over `[A-Za-z0-9]` with `crypto.randomInt`
+    - `redact()` replaces the ref, the password, the keys, the host, connection strings and pooler hosts before any CLI output is printed
+  - `scripts/setup-supabase.mjs` (`npm run db:setup`) follows §8.4:
+    - preconditions: `projects list` works, and exactly one organization is named "Karthi labs" (case-insensitive)
+    - resume from `SUPABASE_PROJECT_REF`, adopt an existing `structured` project (only with a saved password), or create one
+    - free-limit blocker (2 active projects; paused ones are not counted)
+    - the password is persisted **before** the create call
+    - `projects create` runs **once**; any error, timeout or unparsable output is settled by listing the projects again
+    - ref and URL are persisted immediately
+    - the health poll every 10 s (10 min limit), then the API keys every 20 s (5 min limit): new-style publishable and secret keys only, and a current key is kept while it still exists
+    - the summary prints `KEY: set` lines only
+  - `scripts/supabase.mjs` (§8.3):
+    - `link` (password from the child env, `--password=` fallback)
+    - `push [--dry-run]` (retries only connection or tenant errors: 30, 60 and 90 s)
+    - `migrations`, `types`, `ping` and `settings`
+    - `push` and `migrations` first check that `supabase/.temp/project-ref` equals `SUPABASE_PROJECT_REF`
+    - `types` writes UTF-8, LF and one trailing newline, and refuses output without `export type Database` or with a URL
+  - npm scripts `db:setup`, `db:link`, `db:push`, `db:migrations`, `db:types` and `db:ping`.
+  - Unit tests (run in CI, no network, fake CLI; key-shaped fixtures built at runtime):
+    - `scripts/__tests__/setup-supabase.test.mjs` (20 tests): create once, password first, idempotent second run, re-list after a failed, unparsable or timed-out create, adopt, adopt without password, two projects, free limit, paused projects, unknown ref, organization match, JSON fallback, health timeout, key retry and legacy-only keys
+    - `scripts/__tests__/supabase.test.mjs` (23): env checks, URL building, ping lines, network errors without the host, type normalisation, table count, push retry pattern, usage errors
+    - `scripts/lib/__tests__/supabase-cli.test.mjs` (23): parsing, shapes, JSON fallback, password, redaction, output order, plus one real `supabase --version` run through the helper (proves bin resolution and `--agent no` on Linux in CI)
+- **Migration** (commit `feat: add initial database schema migration`): `supabase/migrations/0001_init.sql` is exactly §7. `grep -c` gives 6 `create table`, 4 `create index`, 1 grant to `anon, authenticated, service_role`, 6 `enable row level security`, 6 `create policy "open_access"`, 4 `create trigger`, the publication line, `notify pgrst` and each D0-21 check.
+- **Types** (commit `feat: add generated database types`): `src/data/database.types.ts`, 454 lines, `public.Tables` with the 6 tables, no URL and no ref.
+- **Integration tests** (commit `test: add Supabase integration tests`):
+  - `tsconfig.test.json` (§5.5), referenced from `tsconfig.json`, so `tsc -b` and type-aware ESLint cover `tests/`
+  - `vitest.integration.config.ts` (§5.7) and the `test:integration` script
+  - `tests/integration/supabase.test.ts` covers (a) to (g) of §13.2
+- **Env template** (commit `docs: add environment variable template`): `.env.example` is exactly §5.10 (7 keys, no values).
+
+### Cloud resources created (values only in `.env.local`)
+- Supabase project `structured` in ap-south-1, in the organization "Karthi labs". It uses the last free slot: the organization now has 2 active projects.
+- `.env.local` holds `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_DB_PASSWORD` (generated, 32 alphanumeric characters), `SUPABASE_PROJECT_REF` and `VERCEL_PROJECT_NAME`. `PROD_URL` follows in WP7.
+- The Vercel project and its env vars are WP7. Until then, `.env.local` exists only on this machine (see HANDOFF).
+
+### Commands run
+```
+gh api user --jq .login; git config user.email; git pull --ff-only; netstat -ano   # opening ritual
+npm view supabase version; npm view @supabase/supabase-js version                 # 2.118.0 / 2.117.2
+npm install -D supabase@^2.118.0; npm install @supabase/supabase-js@^2.117.2
+npm run check:hygiene                                                               # @supabase/cli- natives ok
+npx supabase <subcommand> --help --agent no       # projects create/api-keys/list, orgs list, link, db push, migration list, gen types, init
+npx supabase projects list -o json --agent no > "$SCRATCH/p.json"                  # shapes and names only; file deleted
+printf '%s' '<name from the task>' | node scripts/lib/env-file.mjs set VERCEL_PROJECT_NAME
+npx supabase init --agent no < /dev/null
+npm run db:setup                    # created the project; a second run reused everything and changed nothing
+npm run db:link
+node scripts/supabase.mjs push --dry-run    # "Would push these migrations: 0001_init.sql"
+npm run db:push
+npm run db:migrations               # 0001 | 0001
+node scripts/supabase.mjs push --dry-run    # "Remote database is up to date."
+npm run db:types && git diff --exit-code src/data/database.types.ts
+npm run db:ping                     # db: ok (200)
+npm run env:check -- --allow-missing PROD_URL
+npm run test:integration
+npm run format; npm run verify; npm run check:commits; npm run check:leaks
+```
+
+### Verification results
+| Check | Result |
+|---|---|
+| `npm run db:migrations` | `0001` local and remote |
+| `node scripts/supabase.mjs push --dry-run` | `Remote database is up to date.` |
+| `npm run db:types && git diff --exit-code src/data/database.types.ts` | `types: unchanged …`, exit 0 (no drift) |
+| `npm run test:integration` | 7 passed, 0 skipped, 0 failed (about 14 s). Verbose timings: (a) 2.7 s, (b) 1.1 s, (c) 1.5 s, (d) realtime 1.9 s, (e) 0.4 s, (f) 0.2 s, (g) 1.1 s |
+| Integration env probe: `VITE_SUPABASE_URL=` plus a placeholder secret key | all 7 tests **fail** (not skip) with "VITE_SUPABASE_URL is missing; SUPABASE_SECRET_KEY is a Vercel Secret placeholder"; exit 1 |
+| `npm run env:check -- --allow-missing PROD_URL` | 6 × `ok`, `PROD_URL: missing (allowed)` |
+| `.env.local` BOM check (AC 18) | no BOM |
+| `npm run db:ping` | `db: ok (200)` |
+| `node scripts/supabase.mjs settings` | `settings row: missing`: nothing wrote `settings` (WP6 creates it from a real browser, D0-10) |
+| `db:setup` second run | `reusing the project recorded in .env.local`, every key `set`, `.env.local` unchanged |
+| `npm run check:leaks` with `.env.local` present | `leaks: ok (… 7 sensitive values from .env.local)` |
+| `supabase/config.toml` and the types file | contain neither the ref nor a URL (`grep -c` = 0) |
+| `git status --ignored --short` | `.env.local` and `supabase/.temp/` appear only as `!!` |
+| AC 14 counts on `0001_init.sql` | as listed above |
+| `npm run verify` | exit 0: 13 test files, 504 unit tests, `src/core` coverage unchanged (99.45 / 99.13 / 100 / 99.4) |
+| `npm run check:commits` | ok |
+
+### Deviations
+1. **New shared helper `scripts/lib/supabase-cli.mjs`.** §8.4 says the bootstrap "uses the same spawn helper as §8.3". The helper lives in its own module, so that `setup-supabase.mjs` and `supabase.mjs` share one code path and the pure parts can be unit-tested. It is not in the §4 file tree.
+2. **`runReadOnlyJson` falls back on any failure, not only on unparsable stdout.** A non-zero exit with `-o json` also triggers one `--output-format json` attempt (for example if a future CLI rejects `-o json`). Only read-only calls use it; `projects create` never does.
+3. **The free limit counts the active projects of every visible organization**, because the free-plan limit is per account. Paused, removed or failed projects are not counted.
+4. **A recorded `SUPABASE_PROJECT_REF` must also belong to "Karthi labs"** (stricter than §8.4).
+5. **API keys are idempotent:** a key already in `.env.local` is kept while it is still one of the project's keys of that type. Otherwise the first key of that type is taken. This covers key rotation in the dashboard.
+6. **`push` and `migrations` refuse to run** unless `supabase/.temp/project-ref` equals `SUPABASE_PROJECT_REF`, so a stale link can never push to another project.
+7. **CLI output order:** stderr (progress) is printed before stdout (result).
+8. **Integration cleanup uses an escaped LIKE pattern and a JS prefix check.** In SQL `LIKE`, `_` matches any character, so `'__test__%'` would also match titles such as "Retest my code". The tests query `\_\_test\_\_%`, keep only rows whose title or name really starts with `__test__`, and delete by id. The final count check uses the same filter.
+9. **Integration cleanup also removes stale `__test__` rows** left by an earlier failed run, not only this run's rows. The prefix is reserved for tests (CLAUDE.md), so this is safe, and the "none remain" assertion then holds after a crash.
+10. **A missing integration env fails every test** (the env error is re-thrown inside each test) instead of failing `beforeAll`, which Vitest reports as "7 skipped".
+11. **`@supabase/supabase-js` was installed in WP5** (the §11 WP5 step), so `package.json` has it one WP before `src/data/supabase.ts` (WP6) uses it.
+
+### Notes for testers
+- **Values.** `.env.local` exists only on this machine until WP7 stores the keys in Vercel. Never print it. Read single values with `node scripts/lib/env-file.mjs get .env.local <KEY>` into a shell variable only.
+- **Settings row.** It is still missing on purpose. WP6's first real browser load creates it with the browser's zone (AC 19). Integration tests never write `settings`: the constraint probe (e) inserts `id = 2`, the database rejects it with `23514`, and the test then checks with the secret key that no row 2 exists.
+- **Database port.** `db:link`, `db:push` and `db:migrations` need outbound TCP 5432 to the pooler. `db:types` uses the Management API, and `db:ping`/`settings` use HTTPS only.
+- **Re-running `db:setup`** is safe and changes nothing when everything is in place. It never creates a second project, never regenerates the password, and never touches the other project in the organization.
+- **Unit tests** under `scripts/` include one real `supabase --version` run (no network, under a second). In CI it proves that the Linux binary resolves.
+- **Advisors (§13.4)** were not checked in the dashboard in this WP. The expected result is only "RLS policy always true" on the 6 tables.
+- **`supabase/config.toml`** comes from `supabase init` unchanged. Only the CLI's local tooling reads it (the project is cloud-only; Docker is not used).

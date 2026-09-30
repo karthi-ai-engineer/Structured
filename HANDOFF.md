@@ -5,7 +5,7 @@
 ## Current status
 - **Phase:** 0 (Foundation), implementation in progress
 - **Branch:** `phase-0-foundation`
-- **Last updated:** 2026-09-30 11:53 UTC+9
+- **Last updated:** 2026-09-30 12:20 UTC+9
 - **Pipeline stage reached:** stage 7 (implement). Stages 1 to 6 are done:
   - plan, edge-case research, replan and design review: `docs/phases/phase-0/PLAN.md` (approved in `review-r2.md`)
   - tracking issue **#1** ("Phase 0: Foundation", labels `phase`, `phase-0`)
@@ -14,14 +14,18 @@
   - **WP2 done** (styling, lint and architecture rules): Tailwind CSS v4 (`@tailwindcss/vite`, entry `src/styles/index.css`), shadcn/ui 4.21.0 (`radix-nova`, `cn`, `Button` rendered as a disabled "Check again" placeholder), type-aware ESLint with the boundary and clock rules (six negative probes verified), Prettier (`format`, `format:check`), README-only placeholders in `src/features`, `src/stores`, `src/data/queries`, `server` and `api`, and `CLAUDE.md` part 1 (architecture, import rules, code and data conventions, migrations checklist, Windows rules, session-start ritual). Details: `docs/phases/phase-0/DEVLOG.md`.
   - **WP3 done** (tests, CI and repo checks): Vitest 5 (hermetic: `TZ=America/St_Johns` set in `vitest.config.ts`, blanked `VITE_*`, a rejecting `fetch` stub), the `.env` tool `scripts/lib/env-file.mjs` (`env:check`), the repo checks `check:hygiene`, `check:leaks`, `check:commits` and `check:core` (`npm run check`), and `npm run verify` as the full local gate. `.github/workflows/ci.yml` runs the **`ci-verify`** job on every push and PR (Node 24 from `.nvmrc`, npm cache); it is green on the push and the PR. Also `.github/dependabot.yml`, the PR template and issue forms, and the labels `dependencies` and `ci`. Details: `docs/phases/phase-0/DEVLOG.md`.
   - **WP4 done** (time-zone core): `src/core/dates.ts` has the full PLAN §6.1 API. It uses `date-fns` 4.4 and `@date-fns/tz` 1.5; zone offsets are computed exactly from Intl wall-clock parts, because `tzOffset()` gets historical sub-hour negative offsets wrong. It has 320 table-driven tests (API signatures, zones including Kolkata, New York, Chatham, London, Santiago, Lord Howe and historical DST, times, calendar, formatting) and the coverage thresholds 95/95/100/90 in `vitest.config.ts` (actual: 99.45 % statements, 99.13 % branches, 100 % functions). `check:core` prints `ok src/core/dates.ts`, and CI is green on Node 24. The deviations (exact offsets, true start of day, `msUntilNextDayIn` across a repeated midnight) are in `docs/phases/phase-0/DEVLOG.md`.
-  - WP5 to WP9: not started.
-- **Resume with:** `resumeFrom: "implement"`, `skipWPs: ["WP1", "WP2", "WP3", "WP4"]`
+  - **WP5 done** (Supabase): the cloud project `structured` (ap-south-1, organization "Karthi labs") was created by the idempotent `npm run db:setup` (`scripts/setup-supabase.mjs`: every CLI call uses `--agent no` with stdin ignored, JSON shapes are normalised, `projects create` runs once with a re-list fallback). `supabase/migrations/0001_init.sql` (full schema, grants, `open_access` RLS, triggers, realtime, `notify pgrst`) is pushed: `npm run db:migrations` shows `0001` locally and remotely, and a dry-run push says the remote is up to date. `src/data/database.types.ts` is generated (`npm run db:types`, no drift). Opt-in `npm run test:integration` passes 7/7 with 0 skipped. `.env.local` has the 6 keys (`PROD_URL` comes in WP7), and `.env.example` documents all 7. Details and deviations: `docs/phases/phase-0/DEVLOG.md`.
+  - WP6 to WP9: not started.
+- **Resume with:** `resumeFrom: "implement"`, `skipWPs: ["WP1", "WP2", "WP3", "WP4", "WP5"]`
 - **IDs:** tracking issue #1, draft PR #2 (`phase-0-foundation` → `main`, `Closes #1`), ruleset: none yet (WP8).
 - **Pipeline for Phase 0:** `.claude/workflows/phase-pipeline.js`, with args in `docs/phases/phase-0/pipeline-args.json`
-- **Cloud resources created so far:** none. The Supabase project (WP5) and the Vercel project (WP7) are created later in this phase.
+- **Cloud resources created so far:**
+  - Supabase project `structured` in ap-south-1, organization "Karthi labs" (it uses the second and last free slot). Its URL, ref, keys and database password are only in `.env.local` on the machine that ran WP5 (never in the repo).
+  - The Vercel project is created in WP7. WP7 also stores the Supabase keys in the Vercel development env, so that `vercel env pull` can restore `.env.local` on another machine.
 - **Already set up:** GitHub repo, `VERCEL_TOKEN` repo secret (Vercel scope "Karthi Labs"), Supabase org "Karthi labs".
-- **Next:** WP5: the Supabase project `structured` (ap-south-1), the migration `0001_init.sql`, generated types, the env tooling and the integration tests. The opening ritual gains `npm run db:ping` from WP5 on. Then WP6 to WP9, QA rounds, final verification and Ship. After Phase 0, Phase 1 runs the **team workflow**: `docs/process/TEAM_WORKFLOW.md`, `.claude/workflows/team-pipeline.js`, and `docs/phases/phase-1/pipeline-args.json`.
+- **Next:** WP6: the typed Supabase client, the health check and the "DB connected" home page. Its first real browser load creates the `settings` row with the browser's time zone (the row is still missing on purpose; integration tests never write it). The opening ritual now includes `npm run db:ping` (must print `db: ok (200)`). Then WP7 to WP9, QA rounds, final verification and Ship. After Phase 0, Phase 1 runs the **team workflow**: `docs/process/TEAM_WORKFLOW.md`, `.claude/workflows/team-pipeline.js`, and `docs/phases/phase-1/pipeline-args.json`.
 - **Blockers:** none.
+- **Until WP7 is done, `.env.local` exists on one machine only.** If you must switch machines before WP7, copy `.env.local` over a private channel (never git, chat or issues), or on the new machine run `npx supabase login`, then `npm run db:setup` (it adopts the existing project, but needs `SUPABASE_DB_PASSWORD`: reset it in the dashboard under Project settings, Database, and put it into `.env.local` first), then `npm run db:link`.
 - **Notes:**
   - Local Node 26 prints an `EBADENGINE` warning for `engines.node = 24.x`; this is expected (CI and Vercel use Node 24).
   - The owner's commit `28df4fd` (balanced team-pipeline profile) landed after the plan baseline `1195168`; WP2 kept its `CLAUDE.md` paragraph verbatim (see DEVLOG WP1 and WP2).
@@ -40,7 +44,7 @@ Run these in Git Bash.
    - `git config --add credential.https://github.com.helper '!gh auth git-credential'`
 4. `npm ci`, then `npm run verify` (must exit 0).
 5. Log in to the clouds (same accounts as before): `npx supabase login` and `npx vercel login`.
-6. Once the cloud projects exist (WP5 and WP7), restore the secrets: `npx vercel link` (pick the existing `structured-*` project in "Karthi Labs"; never create a new one), then `npx vercel env pull .env.local`, then `npx supabase link --project-ref <SUPABASE_PROJECT_REF from .env.local>`. WP9 replaces this step with the rehearsed, link-safe sequence.
+6. Restore the secrets. After WP7: `npx vercel link` (pick the existing `structured-*` project in "Karthi Labs"; never create a new one), then `npx vercel env pull .env.local`. Before WP7: see the `.env.local` note under **Blockers**. Then `npm run env:check -- --allow-missing PROD_URL`, `npm run db:link`, `npm run db:migrations` (`0001` local and remote) and `npm run db:ping` (`db: ok (200)`). WP9 replaces this step with the rehearsed, link-safe sequence.
 7. Open Claude Code in the repo and say, for example: *"Read HANDOFF.md and CLAUDE.md, then resume the Phase 0 pipeline."* Claude should:
    - take `docs/phases/phase-0/pipeline-args.json`
    - fill in `root` (this clone's absolute path), `today`, `envNotes` (this machine's tools), `resumeFrom` and `skipWPs` (from **Current status** above)
