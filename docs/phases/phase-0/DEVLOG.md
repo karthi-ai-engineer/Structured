@@ -154,3 +154,114 @@ Probes 4 and 5 also report `@typescript-eslint/no-unsafe-assignment`, because th
 - The six negative lint probes can be repeated with any file name inside the same folders. The files must be under `src/`, so that the `tsconfig.app.json` project service picks them up.
 - `npx shadcn add <component>` uses the pinned devDependency (4.21.0). Run `npm run format` afterwards: shadcn writes double quotes, and Prettier normalises them.
 - There are still no tests, `check:*` scripts or CI (WP3). The subset that exists (`lint`, `format:check`, `typecheck`, `build`) passes.
+
+---
+
+## WP3: Vitest setup, CI workflow, repo checks, Dependabot and templates
+
+**Date:** 2026-09-30 (UTC+9). **Branch:** `phase-0-foundation`. **Tracking issue:** #1. **PR:** #2 (draft).
+
+### What was done
+- **Vitest 5.0.2** (commit `test: add Vitest setup`):
+  - `vitest` and `@vitest/coverage-v8` 5.0.2 (devDependencies).
+  - `vitest.config.ts` is §5.7 without `coverage.thresholds` (WP4 adds them): `process.env.TZ = 'America/St_Johns'` is set inside the config; `test.env` blanks `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` and `VITE_BUILD_SHA`; unit tests are `src/**/*.test.{ts,tsx}` and `scripts/**/*.test.mjs`; v8 coverage covers `src/core/**/*.ts`.
+  - `src/test/setup.ts` stubs `fetch` to reject ("network disabled in unit tests").
+  - `src/core/__tests__/environment.test.ts` (§13.1): offset 210 on 2026-01-01, `Intl` zone `America/St_Johns`, blank `import.meta.env` Supabase values, and a rejecting `fetch`.
+  - Scripts `test`, `test:watch` and `test:coverage`. There was no `src/core/README.md` stand-in to remove.
+- **Repo checks** (commit `chore: add repo checks for leaks, hygiene, attribution and core loading`). All are plain Node ESM with no dependencies:
+  - `scripts/lib/env-file.mjs` (§8.1): a BOM-stripping, UTF-16-refusing `.env` reader built on `util.parseEnv`; an atomic `updateEnvFile` (LF, no BOM, other lines and comments kept, duplicates collapsed); the CLI `check | get | set`; and `APP_KEYS`, `SENSITIVE_KEYS`, `PLACEHOLDERS` and `isPlaceholder`.
+  - `scripts/lib/repo.mjs` (new helper, see deviation 1): git file listing, commit listing, binary detection and range resolution.
+  - `scripts/checks/leaks.mjs` (§8.6):
+    - sources: the explicit sensitive-key list, plus the hosts and host labels derived from it and the IDs in `.vercel/project.json`
+    - the nine generic patterns
+    - modes: files plus commit messages (default), `--stdin` and `--files`
+    - output: `LEAK <where>:<line> matches <name>`, never a value
+  - `scripts/checks/hygiene.mjs` (§8.7):
+    - BOM, UTF-8 and CR checks on every text file
+    - lockfile natives for `@rolldown/binding-`, `lightningcss-`, `@tailwindcss/oxide-` and `@supabase/cli-` (win32-x64, linux-x64 and darwin-arm64)
+    - the best-effort pin and workflow invariants are **implemented, not deferred**: `.nvmrc` is 24, `engines.node` is 24.x, the Vercel CLI pin is identical in the three deploy files once they exist, and `ci.yml` keeps `ci-verify` with no path filters
+  - `scripts/checks/commits.mjs` (§8.8):
+    - the four attribution rules over commit messages, `PR_TITLE`/`PR_BODY` and `--text-file`
+    - the author e-mail allowlist (it prints only `AUTHOR <sha7>`, never the e-mail)
+    - when both PR variables are empty it prints `PR text: not provided (push event or bot-authored PR)` and still checks every commit
+  - `scripts/checks/core-node.mjs` (§8.9): imports every non-test `src/core/**/*.ts` with plain Node type stripping, and prints `ok <file>` or `FAIL <file>: <code>`.
+  - Unit tests, with fixtures built at runtime by concatenation (P40): `scripts/lib/__tests__/env-file.test.mjs`, `scripts/checks/__tests__/leaks.test.mjs` and `scripts/checks/__tests__/commits.test.mjs`, plus `scripts/checks/__tests__/hygiene.test.mjs`. There are 118 unit tests in total.
+  - npm scripts `check`, `check:hygiene`, `check:leaks`, `check:commits`, `check:core`, `verify` and `env:check`, in the §5.4 order.
+- **CI** (commit `ci: add CI workflow with ci-verify job`): `.github/workflows/ci.yml` is exactly §10.1, including the r1 bot rule (`PR_TITLE` and `PR_BODY` are empty when `github.event.pull_request.user.type == 'Bot'`; commits and authors are always checked). `npm run format` changed nothing.
+- **Dependabot** (commit `ci: add Dependabot configuration`): `.github/dependabot.yml` is exactly §10.3: npm and github-actions, weekly on Monday at 06:00 Asia/Kolkata, grouped minor/patch updates, and TypeScript and `@types/node` majors ignored. GitHub's own Dependabot config check on the PR passed.
+- **Templates** (commit `chore: add pull request and issue templates`):
+  - `.github/pull_request_template.md`: Summary, Linked issue (`Closes #`), Changes, Checklist (the five §10.4 items, in neutral wording) and Notes.
+  - `.github/ISSUE_TEMPLATE/bug_report.yml`: what happened, expected, steps, platform (exactly `Web`, `Android` and `MCP server`), phase and environment.
+  - `.github/ISSUE_TEMPLATE/feature_request.yml`: problem, proposal, PLAN.md section and priority (P1 to P4).
+  - `.github/ISSUE_TEMPLATE/config.yml`: `blank_issues_enabled: true`, with no contact links.
+- **Labels:** `dependencies` (#0366D6) and `ci` (#1D76DB), created with `gh label create … --force`.
+- **Fix during the WP** (commit `fix: keep the env-file temp name under the .env ignore rule`): the atomic-write temp file for `.env.local` is now `.env.local.tmp-<pid>-<hex>`, which the `.env.*` ignore rule covers. The first version used `..env.local.tmp-…`, which the rule did not cover.
+
+### Commands run
+```
+npm install -D vitest@^5.0.2 @vitest/coverage-v8@^5.0.2
+npm pkg set scripts.test=… scripts.test:watch=… scripts.test:coverage=… scripts.check=… scripts.check:*=… scripts.verify=… scripts.env:check=…
+npm run format
+"$SCRATCH/al/actionlint.exe" .github/workflows/*.yml                      # actionlint 1.7.12 (release zip)
+uvx check-jsonschema --builtin-schema vendor.dependabot .github/dependabot.yml
+uvx check-jsonschema --builtin-schema vendor.github-issue-forms .github/ISSUE_TEMPLATE/bug_report.yml .github/ISSUE_TEMPLATE/feature_request.yml
+uvx check-jsonschema --builtin-schema vendor.github-issue-config .github/ISSUE_TEMPLATE/config.yml
+uvx check-jsonschema --builtin-schema vendor.github-workflows .github/workflows/ci.yml
+grep -niwE 'ai|claude|anthropic|llm' .github/pull_request_template.md .github/ISSUE_TEMPLATE/*
+gh label create dependencies -R karthi-ai-engineer/Structured --color 0366D6 --description "Dependency updates" --force
+gh label create ci -R karthi-ai-engineer/Structured --color 1D76DB --description "CI/CD and automation" --force
+npm run verify
+git push origin phase-0-foundation
+gh pr checks 2
+gh run view <id> --log | node scripts/checks/leaks.mjs --stdin          # every run of this WP
+```
+
+### Verification results
+| Check | Result |
+|---|---|
+| `npm run format` after writing the exact files | no changes |
+| actionlint 1.7.12 on `.github/workflows/*.yml` | no findings (exit 0) |
+| `check-jsonschema` 0.38.2: dependabot, both issue forms, issue config, `ci.yml` | `ok -- validation done` for all four calls |
+| Template word check `grep -niwE 'ai\|claude\|anthropic\|llm' .github/pull_request_template.md .github/ISSUE_TEMPLATE/*` | prints nothing (exit 1) |
+| `npm run verify` (typecheck, lint, format:check, test:coverage, build, check) | exit 0; 5 test files, 118 tests |
+| `ci-verify` on push (run 36659732366) and on the PR (run 36659732463) | both `success`. The log shows `node-version-file: .nvmrc` and `node: v24.21.0`. The first run found no npm cache and saved one (`Cache saved with the key: node-cache-Linux-x64-npm-…`); see the next row |
+| npm cache from the second run on | the runs for `25dbf03` (push 36659958809, PR 36659962822) are `success`, and the log shows `Cache hit for: node-cache-Linux-x64-npm-…` and `Cache restored successfully` |
+| CI log leak scan (`gh run view <id> --log \| node scripts/checks/leaks.mjs --stdin`) | `leaks: ok` for all four runs |
+| Commit step in the PR run | `PR text: checked (title and body)`, then 22 commits in `<base.sha>..<head.sha>` checked |
+| Commit step in the push run | `PR text: not provided (push event or bot-authored PR)`, then 22 commits in `origin/main..HEAD` checked |
+| **Fake leak:** `printf 'sb_%s_%s' secret "$(head -c 32 /dev/urandom \| base64 \| tr -dc A-Za-z0-9 \| head -c 24)" > "$SCRATCH/fake.txt"`, then `node scripts/checks/leaks.mjs --files "$SCRATCH/fake.txt"` | exit 1. It prints only `LEAK <scratch path>/fake.txt:1 matches supabase-secret-key` and the summary, with no value. The file was deleted |
+| **Fake attribution:** a co-author trailer with the assistant name and noreply address, assembled from `printf` pieces into `$SCRATCH/body.md`, then `node scripts/checks/commits.mjs --text-file "$SCRATCH/body.md"` | exit 1, with `ATTRIBUTION file …/body.md:3 matches assistant-noreply-address` and `… co-authored-by-assistant`. The file was deleted |
+| **Bot PR text skip:** `PR_TITLE= PR_BODY= node scripts/checks/commits.mjs` | prints `PR text: not provided (push event or bot-authored PR)`, then `commits: 18 in origin/main..HEAD checked (messages and author e-mails)`; exit 0. A unit test covers it too (`--range HEAD..HEAD`) |
+| Clean PR text: `PR_TITLE='feat: add generated database types'` and a body with the MCP connector wording | `commits: ok` (no false positive) |
+| `ci.yml` bot expression reviewed against §10.1 | identical. On push events `github.event.pull_request` is null, so both variables are `''` |
+| Hermetic env probe: a dummy, non-secret `.env.local` with `VITE_SUPABASE_URL=https://hermetic-probe.invalid` | `environment.test.ts` passes. **Negative probe:** the same run with `test.env` removed (a throwaway config) fails with `expected 'https://hermetic-probe.invalid' to be ''`. The dummy file and the throwaway config were deleted |
+| `check:core` probes (temporary, uncommitted `src/core/probe*.ts`) | a plain `.ts` module gives `ok`; an `@/lib/utils` import gives `FAIL … ERR_MODULE_NOT_FOUND`; an extensionless relative import gives `FAIL … ERR_MODULE_NOT_FOUND`; an `enum` gives `FAIL … ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`; exit 1. The probes were deleted |
+| `env-file.mjs` CLI in the scratchpad | `set` reads stdin, `get` prints without a newline, `check --allow-missing` works, and a UTF-16 file and empty stdin are refused |
+| Labels | `dependencies` and `ci` exist |
+
+### Deviations
+1. **New helper `scripts/lib/repo.mjs`.** `leaks.mjs`, `hygiene.mjs` and `commits.mjs` share git file listing (`git ls-files -z --cached --others --exclude-standard`), commit listing, binary detection and range resolution. The helper is not in the §4 file tree; it avoids three copies of the same git code. Git is spawned without a shell.
+2. **Extra unit test `scripts/checks/__tests__/hygiene.test.mjs`** (encoding, lockfile natives, pin extraction and `ci.yml` invariants). §13.1 does not require it; it was added because CI depends on these checks.
+3. **Vercel pin check before WP7.** None of `deploy.yml`, `scripts/ci/deploy-prod.sh` and `scripts/lib/vercel.mjs` exists yet, so `check:hygiene` prints `note: vercel pin: no deploy files yet`. As soon as any of them exists, all three must exist and carry the same exact `vercel@x.y.z` pin.
+4. **Leak-check details beyond §8.6.** Each is stricter or a false-positive guard; none weakens the check.
+   - `db-url-with-password` ignores documented placeholder passwords (`[YOUR-PASSWORD]`, `<password>`, `${VAR}`, `***`), in the same spirit as the `<ref>` placeholders.
+   - A host label that is a public word (`structured`, `www`, `app`, `localhost`) is never treated as sensitive, so a future custom domain cannot flag the repo name everywhere. The full host and the explicit keys still apply.
+   - `VERCEL_PROJECT_NAME`, hosts, labels and `projectName` match case-insensitively.
+   - `--stdin` and `--files` scan only their input; the default mode scans files and the commit range. `--range` cannot be combined with them.
+5. **`env-file.mjs` details beyond §8.1:**
+   - NUL bytes (UTF-16 without a BOM) and invalid UTF-8 are refused, with the same advice.
+   - `set` refuses an empty value.
+   - Control characters are refused as well as newlines.
+   - The quoting style (none, single quotes, backticks or double quotes) is chosen by a round-trip check through `util.parseEnv`, so a stored value always reads back identically.
+6. **`commits.mjs` details:**
+   - The co-author rule matches the assistant names as substrings on a `Co-Authored-By:` line. It also catches forms such as `GitHubCopilot`, and quoted or list-prefixed trailers.
+   - `" ai"` in the generated-with rule must end at a word boundary, so "generated by airflow" is not flagged.
+7. **CLI entry detection** uses `import.meta.main` (Node 24.2 or later; CI runs 24.21.0).
+8. **Issue forms apply the existing team-workflow labels** `type:bug` and `type:feature` (the plan names no labels). The bug form also has an optional Environment field, and its Platform dropdown allows several selections. The options are exactly `Web`, `Android` and `MCP server`.
+
+### Notes for testers
+- `npm run verify` is now the full local gate (it includes `npm run check`). `check:core` prints `core: no modules in src/core yet` until WP4 adds `dates.ts`.
+- Coverage prints `Unknown% (0/0)` until WP4, because `src/core` has no modules yet. The thresholds arrive in WP4.
+- Without `.env.local`, `check:leaks` uses the generic patterns only. Once WP5 creates `.env.local`, the same command also checks the real values, and `.vercel/project.json` after WP7.
+- Never paste key-shaped strings or trailer lines into files, even as examples. Build them at runtime, as the tests do.
+- The unit tests under `scripts/` spawn `node` and write only to `os.tmpdir()`.
