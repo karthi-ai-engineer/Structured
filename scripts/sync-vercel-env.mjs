@@ -41,6 +41,9 @@ export const MATRIX = Object.freeze([
   { key: 'SUPABASE_PROJECT_REF', development: 'config' },
   { key: 'VERCEL_PROJECT_NAME', development: 'config' },
   { key: 'PROD_URL', development: 'config' },
+  // Phase 2: the MCP connector's path secret. Secret in production; Config in development so
+  // `vercel env pull` restores it on a new machine.
+  { key: 'MCP_SECRET', production: 'secret', development: 'config' },
 ])
 
 /** The matrix as rows: one per (variable, target). */
