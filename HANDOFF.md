@@ -116,9 +116,12 @@ Run everything in **Git Bash**, one step at a time. Each step ends with a check;
    $V project inspect "$NAME" --scope "$TEAM" --format json > .vercel/inspect.json 2> .vercel/inspect.err
    node -e "const j=JSON.parse(require('fs').readFileSync('.vercel/inspect.json','utf8')); const k=Object.keys(j).filter(x=>/link|git/i.test(x)); console.log(k.length ? 'GIT LINK FOUND: '+k.join(',') : 'no git link'); process.exit(k.length ? 1 : 0)"
    $V env pull .env.local --yes > .vercel/pull.log 2>&1 && echo "env pulled"
+   git checkout -- .gitignore    # env pull appends ".env*" (with CRLF) again
    rm -f .vercel/ls.json .vercel/ls.err .vercel/inspect.json .vercel/inspect.err .vercel/link.log .vercel/git.log .vercel/pull.log
+   git status --short            # must print nothing
    ```
-   - Check: `structured-* projects: 1` (linking created nothing), `no git link`, and `env pulled`.
+   - Check: `structured-* projects: 1` (linking created nothing), `no git link`, `env pulled`, and an empty `git status --short`.
+   - Why the `.gitignore` reverts: `vercel link` and `vercel env pull` append `.vercel` and `.env*` to `.gitignore` unless that exact line is present. On Windows the CLI splits the file on CRLF, so it never finds the line in our LF file and appends it every time, with CRLF. The existing rules already ignore both, and the CRLF would fail `check:hygiene`.
 7. **Env check.** `npm run env:check`.
    - Check: all 7 keys print `ok`. `vercel env pull` also adds `VERCEL_OIDC_TOKEN`, which is expected.
 8. **Supabase.**
@@ -141,7 +144,7 @@ Run everything in **Git Bash**, one step at a time. Each step ends with a check;
 ## Returning to an existing clone
 1. `git fetch --prune && git switch <live branch> && git pull --ff-only` (never force-push).
 2. `npm ci` if `package-lock.json` changed since your last session.
-3. `npm run env:sync-vercel` (a read-only report). If a key differs or is missing locally, run `npx --yes vercel@61.1.0 env pull .env.local --yes`, then `npm run env:check`.
+3. `npm run env:sync-vercel` (a read-only report). If a key differs or is missing locally, run `npx --yes vercel@61.1.0 env pull .env.local --yes`, then `git checkout -- .gitignore` (the pull appends a line to it) and `npm run env:check`.
 4. `npm run db:ping` prints `db: ok (200)`.
 5. `npm run db:migrations` shows the same versions locally and remotely.
 
@@ -183,8 +186,8 @@ History on `main` cannot be rewritten (ruleset), and GitHub keeps PR views, so *
 ### Commit signing fails
 If `git commit` fails with a GPG or pinentry error: stop and ask the owner. Never pass `--no-gpg-sign`, and never change the git config.
 
-### `vercel link` changed local files
-`git checkout -- .gitignore`, and restore `.env.local` from the backup (see "Re-linking an existing clone").
+### `vercel link` or `vercel env pull` changed local files
+`git checkout -- .gitignore` (both append a line to it, with CRLF on Windows, which fails `check:hygiene`). After a re-link, restore local-only keys in `.env.local` from the backup (see "Re-linking an existing clone").
 
 ## How we work
 See `CLAUDE.md` (rules, commands, CI/CD flow, "Running a phase") and `PLAN.md` §14. Every phase: branch → tracking issue → pipeline → PR → CI → merge → deploy → release. No AI attribution anywhere.

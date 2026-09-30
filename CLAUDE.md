@@ -231,6 +231,7 @@ Values live only in `.env.local` (gitignored), in the Vercel project and in GitH
 - `VITE_*` values are bundled into the browser code, so they must be **Config**, never Secret, in production. A Secret is only a placeholder at build time, and the production build refuses it.
 - The secret key never gets a `VITE_` prefix, and build steps never read it.
 - `vercel env pull` merges into `.env.local` and adds `VERCEL_OIDC_TOKEN` (a short-lived token). Treat it like a secret; the checks ignore other `VERCEL_*` keys.
+- `vercel link` and `vercel env pull` append `.vercel` / `.env*` to `.gitignore` (with CRLF on Windows, which fails `check:hygiene`). Run `git checkout -- .gitignore` after either; the existing rules already ignore both.
 - A new app key goes into all of these in one change: `.env.example`, `APP_KEYS` in `scripts/lib/env-file.mjs`, `MATRIX` in `scripts/sync-vercel-env.mjs`, and the table above.
 
 ## CI/CD flow
