@@ -3,18 +3,19 @@
 > Read this first when resuming on any device. It is updated at the end of every work package, every fix round, every phase, and before every machine switch. Values (keys, URLs, the Vercel project name, the Supabase ref) are never written here: see `.env.local`.
 
 ## Current status
-- **Phase:** 0 (Foundation), implementation complete; QA next
-- **Branch:** `phase-0-foundation`
-- **Last updated:** 2026-09-30 13:50 UTC+9
-- **Pipeline stage reached:** stage 7 (implement) is complete: all nine work packages are done. Stages 1 to 6 are done too:
-  - plan, edge-case research, replan and design review: `docs/phases/phase-0/PLAN.md` (approved in `review-r2.md`)
-  - tracking issue **#1** ("Phase 0: Foundation", labels `phase`, `phase-0`)
-- **Resume with:** `resumeFrom: "test1"`, `skipWPs: ["WP1", "WP2", "WP3", "WP4", "WP5", "WP6", "WP7", "WP8", "WP9"]`
+- **Phase 0 (Foundation): SHIPPED** as `v0.0.1`. PR #2 was merged into `main`, the deploy workflow deployed production, and issue #1 is closed. Verified in `docs/phases/phase-0/VERIFICATION.md`.
+- **Next: Phase 1 (Web MVP)** on a new branch `phase-1-web-mvp` from `main`.
+- **Last updated:** 2026-09-30
+- **Process from Phase 1 (decided 2026-09-30): lean.** The owner found the multi-agent pipeline far too slow for the work. From now on:
+  - Build directly in the session: one issue plus one `feat/…` PR per work package, each reviewed by at most one reviewer agent.
+  - Run one QA pass per phase, then the release PR, merge and release.
+  - Keep the GitHub footprint (issues, PRs, reviews, labels, milestone, release) as in `docs/process/TEAM_WORKFLOW.md`.
+  - Don't run day-long pipelines. The pipeline scripts in `.claude/workflows/` are kept only for reference.
 - **IDs:**
-  - tracking issue **#1**
-  - draft PR **#2** (`phase-0-foundation` → `main`, `Closes #1`)
+  - issue **#1** (closed by PR #2)
+  - PR **#2** (merged)
   - ruleset **24225914** ("main protection"). Re-apply it only with the PLAN §9.5 GET-then-PUT/POST snippet, never with a second POST.
-- **Pipeline for Phase 0:** `.claude/workflows/phase-pipeline.js`, args in `docs/phases/phase-0/pipeline-args.json`.
+- **Optional owner check:** AC 24 bullet 2 (see VERIFICATION.md). It needs the owner's OK to delete the production `settings` row.
 
 ### Done
 Details, commands and deviations for every work package are in `docs/phases/phase-0/DEVLOG.md`.
@@ -34,8 +35,8 @@ Details, commands and deviations for every work package are in `docs/phases/phas
 - **GitHub:** repo secrets `VERCEL_TOKEN` (Vercel scope "Karthi Labs"), `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL`; ruleset 24225914; CodeQL default setup; description and 12 topics.
 
 ### Next
-1. **QA round 1** (`test1`), then QA round 2 (`test2`), final verification and Ship (PLAN §17.1). Resume the pipeline with `resumeFrom: "test1"`.
-2. **Testers:** read DEVLOG WP9 "Notes for testers" first. The acceptance-criteria self-check table is there.
+1. **Phase 1 (Web MVP):** `git switch main && git pull && git switch -c phase-1-web-mvp`, then follow the lean process above. The scope is in `docs/phases/phase-1/pipeline-args.json` ("scope") and in master `PLAN.md` §14.
+2. **Phase 0 QA notes** (still useful as reference): DEVLOG WP9 "Notes for testers" and the acceptance-criteria self-check table.
 3. **Ship follow-ups:**
    - **CodeQL languages** (PLAN §17.1 step 8). Right after the merge, `gh api repos/karthi-ai-engineer/Structured/code-scanning/default-setup --jq '.state, .languages'` must show `configured` with `javascript-typescript` and `actions`. If a language is missing, run: `printf '{"state":"configured","query_suite":"default","languages":["javascript-typescript","actions"]}' | gh api -X PATCH repos/karthi-ai-engineer/Structured/code-scanning/default-setup --input -`. The same follow-up is in the PR #2 body.
    - **Merge with `gh pr merge 2 --merge`.** The ruleset allows merge commits only and needs a green `ci-verify` on the PR head.

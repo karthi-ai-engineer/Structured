@@ -46,6 +46,7 @@ Deferred (do not build): calendar sync, in-app AI, widgets, login/SSO.
 - This is a personal, single-user app. Don't add login, auth, or security hardening unless asked. Mention a trade-off once, briefly, then move on.
 - Use free tiers (Supabase, Vercel Hobby, GitHub Actions). Prefer rapid, phase-by-phase delivery.
 - Report after each phase and ask before starting the next one.
+- **Process weight (overrides the pipeline sections below):** build directly in the session and ship fast. Never run long multi-agent pipelines for a phase; Phase 0's day-long pipeline was far too slow for the work. Use at most one reviewer agent per PR and one QA agent per phase. Keep the GitHub footprint (issue and PR per work package, review verdicts, bug issues, release). State the expected time before any long-running step.
 - The owner works from more than one machine. GitHub plus `HANDOFF.md` is the only shared state, so push often and never leave important progress only on one machine.
 - Contributions must be credited to the owner, who is earning GitHub achievements through real PRs and merges. Never add AI attribution (see above).
 
