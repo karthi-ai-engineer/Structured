@@ -5,7 +5,7 @@
 ## Current status
 - **Phase:** 0 (Foundation), implementation in progress
 - **Branch:** `phase-0-foundation`
-- **Last updated:** 2026-09-30 12:45 UTC+9
+- **Last updated:** 2026-09-30 13:20 UTC+9
 - **Pipeline stage reached:** stage 7 (implement). Stages 1 to 6 are done:
   - plan, edge-case research, replan and design review: `docs/phases/phase-0/PLAN.md` (approved in `review-r2.md`)
   - tracking issue **#1** ("Phase 0: Foundation", labels `phase`, `phase-0`)
@@ -23,26 +23,39 @@
     - Manual checks: M1 ("DB connected") passed in Chrome. M2 passed: the first load created the **settings row with `timezone=Asia/Tokyo`** (the browser's zone), and a reload showed "found". M3 passed: an unconfigured build shows "Database not configured" with no console errors.
     - 705 unit tests; CI green.
     - Details and deviations are in `docs/phases/phase-0/DEVLOG.md`. Among them: the ESLint server-import rule now allows `react-dom/server`.
-  - WP7 to WP9: not started.
-- **Resume with:** `resumeFrom: "implement"`, `skipWPs: ["WP1", "WP2", "WP3", "WP4", "WP5", "WP6"]`
+  - **WP7 done** (Vercel and the first production deploy):
+    - The Vercel project was created once in the "Karthi Labs" team, with the secret name from `.env.local` (`VERCEL_PROJECT_NAME`), and linked (`.vercel/project.json`, gitignored). Settings: Git integration **off** (no Git link; `vercel.json` has `git.deploymentEnabled: false`), framework Vite, Node.js 24.x, **Standard Protection** (`prod_deployment_urls_and_all_previews`: the production domain is public, generated deployment URLs need a Vercel login).
+    - `vercel.json` (SPA rewrite that never touches `/api` or `/assets/`, privacy headers, region `bom1`) and `.vercelignore`.
+    - `npm run env:sync-vercel` (`scripts/sync-vercel-env.mjs`): the env matrix of PLAN §5.11 is in sync. All 7 app keys are in the Vercel **development** env (so `vercel env pull` restores `.env.local`), `VITE_*` are Config in production and preview, and the secret key is Secret in production.
+    - `scripts/ci/deploy-prod.sh` (pull, build with the env guard, exact-value bundle check, prebuilt deploy, smoke) is the one deploy path, for `.github/workflows/deploy.yml` and for local runs. `scripts/ci/smoke.mjs` checks the build SHA, routes, headers and a live DB probe without printing URLs.
+    - Production is deployed (commit `9c23319`) and passed the smoke check and the protection probe. In the owner's Chrome it shows **"DB connected"**. `PROD_URL` is in `.env.local` and the Vercel development env.
+    - GitHub secrets `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL` are set (with `VERCEL_TOKEN`, 4 in total). The clean-clone rehearsal proved a tokenless `vercel build`, so `deploy.yml` should work at Ship.
+    - 796 unit tests; CI green. Details and deviations: `docs/phases/phase-0/DEVLOG.md`.
+  - WP8 and WP9: not started.
+- **Resume with:** `resumeFrom: "implement"`, `skipWPs: ["WP1", "WP2", "WP3", "WP4", "WP5", "WP6", "WP7"]`
 - **IDs:** tracking issue #1, draft PR #2 (`phase-0-foundation` → `main`, `Closes #1`), ruleset: none yet (WP8).
 - **Pipeline for Phase 0:** `.claude/workflows/phase-pipeline.js`, with args in `docs/phases/phase-0/pipeline-args.json`
 - **Cloud resources created so far:**
-  - Supabase project `structured` in ap-south-1, organization "Karthi labs" (it uses the second and last free slot). Its URL, ref, keys and database password are only in `.env.local` on the machine that ran WP5 (never in the repo).
-  - The Vercel project is created in WP7. WP7 also stores the Supabase keys in the Vercel development env, so that `vercel env pull` can restore `.env.local` on another machine.
-- **Already set up:** GitHub repo, `VERCEL_TOKEN` repo secret (Vercel scope "Karthi Labs"), Supabase org "Karthi labs".
-- **Next:** WP7 covers the Vercel project, its env vars, `vercel.json`, `scripts/ci/deploy-prod.sh` plus the smoke check, `deploy.yml`, and the first production deploy. The production build must pass the WP6 guard, so the `VITE_*` variables must be **Config** (not sensitive) in Vercel production.
+  - Supabase project `structured` in ap-south-1, organization "Karthi labs" (it uses the second and last free slot). Its URL, ref, keys and database password are in `.env.local` and in the Vercel development env (never in the repo).
+  - Vercel project (secret name: see `.env.local`) in the "Karthi Labs" team, deployed to production from this machine with `scripts/ci/deploy-prod.sh`. The production URL is `PROD_URL` in `.env.local` (never in the repo).
+- **Already set up:** GitHub repo; repo secrets `VERCEL_TOKEN` (Vercel scope "Karthi Labs"), `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL`; Supabase org "Karthi labs".
+- **Next:** WP8 covers the `main` ruleset (`.github/rulesets/main.json`, required check `ci-verify`), CodeQL default setup, and the repo description and topics. Then WP9 (CLAUDE.md part 2, README, final HANDOFF, the resume rehearsal and the final sweep), the QA rounds, final verification and Ship.
+  - **Open item from WP7 (for QA or the owner):** repeat M2 against production (AC 24 bullet 2). Delete the `settings` row with a one-off secret-key command, then load production in the owner's Chrome: the first load must show `Settings row created`, and a reload `Settings row found`; `node scripts/supabase.mjs settings` must show Chrome's zone. The WP7 session was not permitted to delete the row, so it was left as is (DEVLOG WP7, deviation 7).
+  - **WP9 must add to the HANDOFF link steps:** `vercel link` rewrites `.env.local` (it pulls the development env) and appends `.vercel`/`.env*` to `.gitignore`. Back up `.env.local` before linking, and run `git checkout -- .gitignore` after it (DEVLOG WP7, deviation 4).
+  - Production serves commit `9c23319`; the next production deploy is the `Deploy` workflow at Ship. To rerun the smoke check without deploying, see DEVLOG WP7 "Notes for testers".
+  - Best-effort items (§0.1): the pin check and the `--expect-protected` probe are done. `env:sync-vercel -- --apply --force` is implemented and unit-tested, but was not run against the live project (the session was not permitted to overwrite); the substitute is `vercel env rm <NAME> <target> --yes`, then `--apply`. The preview API fallback is implemented but was not needed.
   - The `settings` row already exists (`Asia/Tokyo`, created by Chrome in WP6). Any test that deletes it must let a real browser on the owner's machine recreate it, never a headless one.
   - The opening ritual includes `npm run db:ping` (must print `db: ok (200)`).
-  - After WP7: WP8 and WP9, the QA rounds, final verification and Ship. After Phase 0, Phase 1 runs the **team workflow**: `docs/process/TEAM_WORKFLOW.md`, `.claude/workflows/team-pipeline.js`, and `docs/phases/phase-1/pipeline-args.json`.
+  - After Phase 0, Phase 1 runs the **team workflow**: `docs/process/TEAM_WORKFLOW.md`, `.claude/workflows/team-pipeline.js`, and `docs/phases/phase-1/pipeline-args.json`.
 - **Blockers:** none.
-- **Until WP7 is done, `.env.local` exists on one machine only.** If you must switch machines before WP7, copy `.env.local` over a private channel (never git, chat or issues), or on the new machine run `npx supabase login`, then `npm run db:setup` (it adopts the existing project, but needs `SUPABASE_DB_PASSWORD`: reset it in the dashboard under Project settings, Database, and put it into `.env.local` first), then `npm run db:link`.
 - **Notes:**
   - Local Node 26 prints an `EBADENGINE` warning for `engines.node = 24.x`; this is expected (CI and Vercel use Node 24).
   - The owner's commit `28df4fd` (balanced team-pipeline profile) landed after the plan baseline `1195168`; WP2 kept its `CLAUDE.md` paragraph verbatim (see DEVLOG WP1 and WP2).
   - Local gate: `npm run verify` (typecheck, lint, format:check, test:coverage, build, and `npm run check`). Run `npm run check:commits` and `npm run check:leaks` before every push; run `node scripts/checks/commits.mjs --text-file <file>` on any PR, issue or release text before `gh … create/edit`.
   - CI: `CI / ci-verify` runs on every push and PR. The `main` ruleset (WP8) will require it; never rename the job or add path filters.
-  - A local `npm run build` with `.env.local` present bundles the real Supabase URL and publishable key into `dist/`. `dist/` is gitignored; never commit, upload or paste it. CI builds are unconfigured by design, and show "Database not configured".
+  - A local `npm run build` with `.env.local` present bundles the real Supabase URL and publishable key into `dist/`. `dist/` is gitignored; never commit, upload or paste it. CI builds are unconfigured by design, and show "Database not configured". The same applies to `.vercel/` after a local deploy (`project.json`, `.env.production.local` and `output/`).
+  - The Vercel development env is the source of truth for `.env.local` on other machines. Run `npm run env:sync-vercel` (a read-only report that prints names only) before any `vercel env pull`, and `npm run env:sync-vercel -- --apply` after adding a local key.
+  - Local production deploy (same script as CI): `PROD_URL="$(node scripts/lib/env-file.mjs get .env.local PROD_URL)" DEPLOY_LOG_DIR=<scratch folder> bash scripts/ci/deploy-prod.sh`. It needs the link (`.vercel/project.json`) and prints no URLs; delete the log folder afterwards, because it holds the generated deployment URL.
   - All date and time logic goes through `src/core/dates.ts` (ESLint blocks reading the clock anywhere else). The coverage thresholds for `src/core` are enforced by `npm run test:coverage` (part of `verify` and CI).
 - **Optional before Phase 1:** run `gh auth refresh -s project` so the pipeline can maintain a GitHub Project board.
 
@@ -56,7 +69,13 @@ Run these in Git Bash.
    - `git config --add credential.https://github.com.helper '!gh auth git-credential'`
 4. `npm ci`, then `npm run verify` (must exit 0).
 5. Log in to the clouds (same accounts as before): `npx supabase login` and `npx vercel login`.
-6. Restore the secrets. After WP7: `npx vercel link` (pick the existing `structured-*` project in "Karthi Labs"; never create a new one), then `npx vercel env pull .env.local`. Before WP7: see the `.env.local` note under **Blockers**. Then `npm run env:check -- --allow-missing PROD_URL`, `npm run db:link`, `npm run db:migrations` (`0001` local and remote) and `npm run db:ping` (`db: ok (200)`). WP9 replaces this step with the rehearsed, link-safe sequence.
+6. Restore the secrets from the Vercel development env:
+   1. `npx --yes vercel@61.1.0 project ls --scope <team>` (the team slug from `npx --yes vercel@61.1.0 teams ls`) must list exactly one `structured-…` project. `npx --yes vercel@61.1.0 project inspect <that name> --scope <team>` must succeed before linking.
+   2. `npx --yes vercel@61.1.0 link --yes --project <that name> --team <team>`. Stop if the CLI says it is creating a project.
+   3. `git checkout -- .gitignore` (link appends lines to it), then `npx --yes vercel@61.1.0 env pull .env.local --yes`.
+   4. `npm run env:check` (all 7 keys `ok`), `npm run db:link`, `npm run db:migrations` (`0001` local and remote) and `npm run db:ping` (`db: ok (200)`).
+
+   WP9 rehearses and finalises this sequence.
 7. Open Claude Code in the repo and say, for example: *"Read HANDOFF.md and CLAUDE.md, then resume the Phase 0 pipeline."* Claude should:
    - take `docs/phases/phase-0/pipeline-args.json`
    - fill in `root` (this clone's absolute path), `today`, `envNotes` (this machine's tools), `resumeFrom` and `skipWPs` (from **Current status** above)

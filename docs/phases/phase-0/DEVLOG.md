@@ -640,3 +640,123 @@ gh run view <id> --log | node scripts/checks/leaks.mjs --stdin
 - **"Check again" is fast** against a healthy database, so the pending state is brief. Observe it with a MutationObserver, or with network throttling in DevTools.
 - **The StrictMode request count** (1 per dev load) is a quick way to catch a singleflight regression: 2 requests, or `created` followed by `found` on the first load, means the two initializer calls did not share one promise.
 - **The production guard runs only** with `REQUIRE_SUPABASE_ENV=1` or `VERCEL_ENV=production`. Plain `npm run build` (CI's verify build) stays unconfigured by design.
+
+---
+
+## WP7: Vercel project, env vars, vercel.json, deploy script and workflow, first production deploy
+
+**Date:** 2026-09-30 (UTC+9). **Branch:** `phase-0-foundation`. **Tracking issue:** #1. **PR:** #2 (draft).
+
+### What was done
+- **Vercel configuration** (commit `feat: add Vercel configuration with SPA rewrite, privacy headers and region`): `vercel.json` and `.vercelignore` exactly as §5.9 (Prettier left both unchanged). The built `.vercel/output/config.json` has the three privacy headers on `/(.*)`, the immutable cache header on `/assets/(.*)`, then `handle: filesystem`, then the rewrite `^(?:/((?!api(?:/|$)|assets/).*))$` → `/index.html`. `vercel build` accepted `regions: ["bom1"]` on Hobby.
+- **Deploy path** (commit `ci: add production deploy script, smoke check and deploy workflow`):
+  - `scripts/ci/deploy-prod.sh` and `scripts/ci/redact-log.sh` exactly as §8.10 and §8.12 (both committed as mode 100755).
+  - `scripts/ci/smoke.mjs` (§8.11): the 8 checks, `ok|FAIL <METHOD> <path> (<status>[, detail])` lines only, `::add-mask::` for the production host, its first label, the Supabase host and the key when `GITHUB_ACTIONS=true`, `redirect: 'manual'` and a 20 s timeout per request, and fetch errors reduced to `network error (<code>)`.
+  - `scripts/lib/vercel.mjs` (§8.2): `VERCEL_CLI = 'vercel@61.1.0'`, `runVercel` (a shell command built from validated arguments; values on stdin only), `redact`, `parseJson`, `describeFailure`.
+  - `.github/workflows/deploy.yml` exactly as §10.2 (actionlint 1.7.12: no findings; `check-jsonschema` `vendor.github-workflows`: ok for both workflows).
+- **Env sync** (commit `chore: add Vercel env sync script`): `scripts/sync-vercel-env.mjs` (§8.5) and the npm script `env:sync-vercel`.
+- **Tests** (commit `test: cover the Vercel CLI helper, env sync and smoke check`), with no network and no CLI, and fixtures built at runtime:
+  - `scripts/lib/__tests__/vercel.test.mjs`: the pin shape, safe and unsafe arguments (never echoed), JSON parsing, redaction of URLs, hosts, IDs, keys and the project-name shape, failure tails
+  - `scripts/__tests__/sync-vercel-env.test.mjs`: the exact §5.11 matrix, local value checks, `env ls` parsing that drops values, row classification, type problems, `--apply` (values on stdin only, planned type flags), `--apply` never overwriting, `--force`, the preview API fallback, redacted CLI failures, the temp-folder fallback and the unlinked refusal
+  - `scripts/ci/__tests__/smoke.test.mjs`: every check passing and failing, the SHA retry loop, the 540 and 401 copy, the protection probe, CI masks, input validation, and no URL, host or key in any printed line
+- **Cloud work (§9.3):**
+  1. `project inspect` reported `project_not_found` and the team had 0 projects, so the project was created once with `project add` in the "Karthi Labs" team, then linked with `link --yes --project <name> --team <team>`. `.vercel/project.json` has `projectId`, `orgId` and `projectName`. Count: `named VERCEL_PROJECT_NAME: 1, starting with structured-: 1`.
+  2. `git disconnect --yes` answered "No Git repository connected" (expected). `project update --framework vite --node-version 24.x --yes` succeeded. `project protection enable <name> --sso` set Standard Protection (see deviation 5).
+  3. `npm run env:sync-vercel -- --apply` added the 11 rows that exist locally. The verify pass showed every row `same`, the production secret key `unknown (Secret)`, and the types ok.
+  4. First production deploy through `bash scripts/ci/deploy-prod.sh` (no `PROD_URL` yet, so the smoke check was skipped): bundle check passed, deploy ok, `package-lock.json` unchanged.
+  5. `PROD_URL`: the team-scoped `vercel api /v9/projects/<id>/domains --scope <orgId>` returned exactly one domain: verified, no redirect, no Git branch, `*.vercel.app`. It was piped into `env-file.mjs set` (never printed), and `--apply` added it to the development env.
+  6. Full deploy with the smoke check, then `smoke.mjs --expect-protected` (results below).
+  7. `gh secret set` for `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL`, values from stdin (never echoed).
+- **Env-var link rehearsal (§9.4):**
+  - a fresh clone of `phase-0-foundation` at `9c23319` (no `.vercel/`), then `npm ci`
+  - `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` exported from the real checkout
+  - `deploy-prod.sh` with `VERCEL_BUILD_BIN="npx --yes vercel@61.1.0 -Q <empty folder>"`. `whoami`, `pull` and `deploy` used the logged-in CLI, while `vercel build` ran with an **empty global config** (no `auth.json`). So the CI build step needs no token.
+  - The run redeployed the same commit, and the smoke check passed.
+  - Cleanup: the clone's `.env*` and `.vercel` first, then the clone, the empty config folder and the logs. `test ! -e` confirmed all three are gone.
+
+### Commands run
+```
+gh api user --jq .login; git config user.email; git pull --ff-only; netstat -ano; npm run db:ping   # opening ritual
+npx --yes vercel@61.1.0 whoami; npx --yes vercel@61.1.0 teams ls           # logged in; team "Karthi Labs"
+npx --yes vercel@61.1.0 <project|link|env|api|pull|build|deploy|git> --help
+# read the shipped 61.1.0 source: env add (preview without a branch), env ls JSON, protection enable
+# §9.3 steps 1 to 7 as listed above (V="npx --yes vercel@61.1.0"; every output into scratch files)
+npm run env:sync-vercel; npm run env:sync-vercel -- --apply     # twice: before and after PROD_URL
+export DEPLOY_LOG_DIR="$SCRATCH/deploy-logs"; bash scripts/ci/deploy-prod.sh
+PROD_URL="$(envget PROD_URL)" bash scripts/ci/deploy-prod.sh
+PROD_URL=<from .env.local> EXPECTED_SHA=<HEAD> SUPABASE_ENV_FILE=.vercel/.env.production.local \
+  node scripts/ci/smoke.mjs --expect-protected "$DEPLOY_LOG_DIR/vercel-deploy.out"
+<node reads .vercel/project.json> | gh secret set VERCEL_ORG_ID      # and VERCEL_PROJECT_ID
+envget PROD_URL | gh secret set PROD_URL
+# §9.4 rehearsal in "$SCRATCH/ci-rehearsal" (see above), then cleanup and test ! -e
+npm run format; "$SCRATCH/al/actionlint.exe" .github/workflows/*.yml
+uvx check-jsonschema --builtin-schema vendor.github-workflows .github/workflows/deploy.yml .github/workflows/ci.yml
+npm run check:hygiene; grep -c 'vercel@61.1.0' .github/workflows/deploy.yml scripts/ci/deploy-prod.sh scripts/lib/vercel.mjs
+npm run verify; npm run check:commits; npm run check:leaks
+node scripts/checks/leaks.mjs --files <each scratch log, before it was deleted>
+gh run view <id> --log | node scripts/checks/leaks.mjs --stdin
+```
+Every scratch file that held a URL, an ID or a value (`v-*.json`, the deploy logs, the `.env.local` backup, the sync logs) was deleted at the end.
+
+### Verification results
+| Check | Result |
+|---|---|
+| `deploy-prod.sh` end-to-end with the smoke check (**mandatory**) | exit 0. It printed `Bundle check passed.` and `Deployed to production (URL intentionally not printed).`, then `ok GET / (200, build-sha 9c23319)`, `ok HEADER / x-robots-tag (noindex)`, `ok HEADER / referrer-policy (no-referrer)`, `ok GET /day/2026-01-01 (200)`, `ok GET /assets/does-not-exist.js (404)`, `ok GET /api (404)`, `ok GET /api/not-a-function (404)`, `ok GET /robots.txt (200)`, `ok GET db /rest/v1/settings (200)` and `smoke: ok`. The SHA was HEAD (`9c23319`) at the time of the deploy |
+| `--expect-protected` (best effort, §0.1) | **passed**: `ok GET <deployment>/ (302, protected)` (a redirect to the Vercel login). The production domain answered 200 without authentication (AC 26 bullet 2) |
+| Rehearsal (§9.4) | passed with a tokenless build; the clone, the empty config folder and the logs are gone (`test ! -e`) |
+| Project count (§9.3 step 1) | `named VERCEL_PROJECT_NAME: 1, starting with structured-: 1` |
+| Git link | `project inspect --format json` has no `link` or `git` field, and `GET /v9/projects/<id>` has `link: null` |
+| Project settings (AC 28) | framework `vite`, Node.js `24.x` |
+| Protection JSON (AC 26) | `ssoProtection.deploymentType = prod_deployment_urls_and_all_previews` |
+| Env sync report (AC 27) | 11 rows `same`, `SUPABASE_SECRET_KEY production: unknown (Secret)`, `types: ok` (from `env ls --format json`: `VITE_*` are Config in production and preview, and the secret key is Secret in production), `env sync: in sync`, exit 0 |
+| `env pull` of a Secret | writes the placeholder `[SENSITIVE]` (checked by type only, never printed) |
+| `gh secret list` | `PROD_URL`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `VERCEL_TOKEN` |
+| Vercel bot comments on PR #2 | none (`gh pr view 2 --json comments`: 0 comments) |
+| E5 (production in the owner's Chrome) | `[data-testid=db-status-title]` = `DB connected`, `data-state="connected"`, detail `Settings row found`, heading "Structured", a 40-character `build-sha` starting with `9c23319`, exactly 1 `/rest/v1/settings` request, no console errors. `/day/2026-01-01` also renders the app, and "Check again" re-ran the check and stayed `DB connected` |
+| Vercel CLI pin | `npm run check:hygiene` prints `vercel pin: 61.1.0 in 3 files` and passes (the pin check is implemented, not deferred). The §0.1 grep gives 1 / 1 / 1 |
+| AC 29 echo grep | prints nothing |
+| `git diff --exit-code package-lock.json` | clean after both local builds and in the rehearsal clone |
+| `npm run verify` | exit 0: 25 test files, 796 unit tests (WP6: 22 and 705), `src/core` coverage unchanged (99.45 / 99.13 / 100 / 99.4), build ok, `check` ok |
+| `npm run check:leaks` with `.env.local` and `.vercel/project.json` present | `leaks: ok (… 11 sensitive values from .env.local and .vercel/project.json)` |
+| CI `ci-verify` for `9c23319` | push run 36666577026 and PR run 36666579960 both `success` (`node: v24.21.0`, 25 test files passed, `vercel pin: 61.1.0 in 3 files`, hygiene ok). Both logs pass `check:leaks --stdin` with `.env.local` present |
+
+### Deviations
+1. **`runVercel` adds `--non-interactive` to every call.** Agent detection makes the CLI non-interactive in this session, but not in a person's terminal. The flag makes both behave the same, and a missing input fails instead of waiting for a prompt. `runVercel` also sets `NO_COLOR=1`, has a 5-minute timeout and accepts `cwd` and `env`. The argument check (`SAFE_ARG_RE`) is the §8.2 regex.
+2. **`sync-vercel-env.mjs` reads existence and type from `vercel env ls --format json`**, and values from `vercel env pull`. Only names, targets and type labels are kept from `env ls`; its values are dropped at parse time. So a Secret row is `unknown (Secret)` because of its type, not because of the placeholder text. Additions:
+   - the status `unknown (not in the pulled file)` for a Config record that `env pull` did not return
+   - the type check covers every matrix row (not only `VITE_*` and the secret key), and it flags an app key stored in a target outside the matrix (for example the DB password in production)
+   - exit code 1 whenever a row is not in sync or a type is wrong, in report mode too
+   - `--force` requires `--apply`
+   - if the OS temp path is not a safe CLI argument (for example a user name with a space), the pull folder moves into the gitignored `.vercel/`
+3. **Preview env vars needed no fallback.** CLI 61.1.0 adds a preview variable for all branches when it runs non-interactively with exactly two positional arguments, or with `--yes` (read in the shipped source, confirmed live). The API fallback (§8.5 item 5) is implemented and unit-tested, but was not used. If it is ever used, its type `encrypted` shows as Config under the same label rule the CLI uses (review r2, N4).
+4. **`vercel link` changes local files.** It pulled the development env into `.env.local` (adding `VERCEL_OIDC_TOKEN`), and it appended `.vercel` and `.env*` to `.gitignore` with CRLF line endings. The §9.3 backup and `cmp` restored `.env.local`, and `git checkout -- .gitignore` reverted `.gitignore` (the existing rules already cover both). WP9 must add the `.gitignore` revert to the HANDOFF link steps.
+5. **New projects start with `ssoProtection.deploymentType = all_except_custom_domains`.** Without a custom domain, that also protects the production `*.vercel.app` domain. `protection enable --sso` changed it to `prod_deployment_urls_and_all_previews` (Standard Protection), as planned.
+6. **`smoke.mjs` output details:**
+   - the header checks print as `HEADER / x-robots-tag` and `HEADER / referrer-policy`
+   - the DB probe prints as `GET db /rest/v1/settings`
+   - the protection probe prints as `GET <deployment>/`
+   - while the SHA does not match yet, it prints `wait GET / (...; retry n/6 ...)`
+
+   The probe's deployment URL is the first `*.vercel.app` URL in the deploy output. In the CLI's JSON output that is `deployment.url`, which comes before the production URL.
+7. **M2 against production (AC 24 bullet 2) was not repeated.** This session's permission guard refused the one-off secret-key deletion of the `settings` row, so the row was not touched (`settings row: present, timezone=Asia/Tokyo`, unchanged since WP6). The production read is proven (E5), and production uses the same database and the same code that created the row in WP6 M2. **Open for QA or the owner:**
+   1. Delete the row with a one-off secret-key command.
+   2. Load production in the owner's Chrome: the first load must show `Settings row created`, and a reload `Settings row found`.
+   3. `node scripts/supabase.mjs settings` must show Chrome's zone.
+8. **`--apply --force` was not run against the live project.** This session's permission guard refused an overwrite run. It is implemented and unit-tested: it overwrites `differs` and `unknown` rows with `env add --force`. The §0.1 substitute still works: `vercel env rm <NAME> <target> --yes`, then `--apply`.
+9. **`vercel.json` was not validated with `check-jsonschema`.** Fetching the remote schema hung, and the run was stopped. `vercel build` accepted the file, and the generated routes were inspected (see above).
+10. **Local builds run on Windows** (`vercel build` under Git Bash), so the §9.3 remote-build fallback was not needed.
+11. **Two Windows adjustments.** `gh secret set` got `-R karthi-ai-engineer/Structured` explicitly. The rehearsal passed the empty config folder to `-Q` as a Windows path (`cygpath -m`), because the CLI is a native Windows program.
+12. **Three test files beyond the §4 tree:** `scripts/lib/__tests__/vercel.test.mjs`, `scripts/__tests__/sync-vercel-env.test.mjs` and `scripts/ci/__tests__/smoke.test.mjs`.
+
+### Notes for testers
+- **Production serves commit `9c2331913bf037b2a6391823835c6c0bdfb25e2f`**, the WP7 code. Later commits on the branch are docs only.
+  - To rerun the smoke check without deploying, pass that SHA: `PROD_URL="$(node scripts/lib/env-file.mjs get .env.local PROD_URL)" EXPECTED_SHA=9c2331913bf037b2a6391823835c6c0bdfb25e2f SUPABASE_ENV_FILE=.vercel/.env.production.local node scripts/ci/smoke.mjs`.
+  - A new deploy (`PROD_URL="$(…)" bash scripts/ci/deploy-prod.sh`) stamps and checks HEAD instead.
+- **`.vercel/` now holds three things.** All of it is gitignored; never commit, upload or paste it.
+  - `project.json`: the IDs and the project name
+  - `.env.production.local`: the production env, with the secret key as `[SENSITIVE]`
+  - `output/`: a production bundle with the real publishable key and host
+- **Never run `vercel link` without the backup step.** It rewrites `.env.local` and `.gitignore` (deviation 4).
+- **`npm run env:sync-vercel`** is read-only and prints names only. It needs the link (`.vercel/project.json`) and refuses to run without it.
+- **`deploy.yml` runs first in the Ship stage**, because it has to be on `main`. Its script path was run twice locally, and once on a clean clone with a tokenless build.
+- **Open item:** M2 against production (deviation 7).
