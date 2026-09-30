@@ -28,8 +28,10 @@ export function view(task: Task, warnings?: readonly string[]): Record<string, u
     if (isAllDayLike(task)) {
       v.all_day = true
     } else {
+      const end = taskEnd(task)
       v.start = task.startTime
-      v.end = taskEnd(task)?.time
+      v.end = end?.time
+      if (end && end.dayOffset > 0) v.ends_next_day = true
       v.duration_min = task.durationMin
     }
   }

@@ -1,6 +1,6 @@
 // Request entry for the Vercel function api/mcp/[secret].ts (kept here so it is unit-testable).
 // The secret path segment is the connector's only protection (PLAN.md section 10.2): any other
-// path answers 404 without revealing whether the endpoint exists.
+// path, and a misconfigured deployment, answer 404 without revealing whether the endpoint exists.
 
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { readServerEnv, type ServerEnv } from '../env.ts'
@@ -55,9 +55,11 @@ export function createEntry(options: EntryOptions = {}): (request: Request) => P
     let entry: ReturnType<typeof init>
     try {
       entry = init()
-    } catch {
-      // Misconfigured deployment: say nothing specific to the caller (details are in the env).
-      return new Response('Service unavailable', { status: 503 })
+    } catch (error) {
+      // Misconfigured deployment: log the cause for the owner (readServerEnv names variables,
+      // never values) and answer like any unknown path, so the endpoint is not revealed.
+      console.error(error instanceof Error ? error.message : 'MCP server init failed')
+      return notFound()
     }
     const given = secretFromUrl(request.url)
     if (given === null || !secretMatches(given, entry.env.mcpSecret)) return notFound()
