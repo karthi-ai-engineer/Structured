@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation } from 'react-router'
 import { CalendarDays, Inbox, Settings as SettingsIcon, type LucideIcon } from 'lucide-react'
 import { InboxList } from '@/features/inbox/InboxList'
+import { RouteErrorBoundary } from '@/features/shell/RouteErrorBoundary'
 import { cn } from '@/lib/utils'
 
 const NAV: readonly { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
@@ -42,7 +43,9 @@ export function AppShell() {
       </aside>
 
       <main className="min-w-0">
-        <Outlet />
+        <RouteErrorBoundary key={pathname}>
+          <Outlet />
+        </RouteErrorBoundary>
       </main>
 
       <aside

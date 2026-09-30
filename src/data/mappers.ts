@@ -1,6 +1,8 @@
 // Maps database rows to the domain types in src/core and back (PLAN.md section 7).
 // Postgres `time` columns come back as 'HH:mm:ss'; the app uses 'HH:mm'.
 import type { Tables, TablesInsert, TablesUpdate } from '@/data/database.types'
+import { isTime, isValidTimeZone } from '@/core/dates'
+import { detectTimeZone } from '@/platform/timezone'
 import { DEFAULT_TASK_COLOR, isTaskColor, parseSubtasks } from '@/core/tasks'
 import type { Task, TaskDraft, TaskPatch } from '@/core/tasks'
 import { toSafeWeekStart, toTheme, toTimeFormat } from '@/core/settings'
@@ -15,6 +17,19 @@ export function toHHmm(time: string | null): string | null {
   return time === null ? null : time.slice(0, 5)
 }
 
+/** A stored start time the timeline can use: 'HH:mm' in 00:00..23:59, otherwise null (the task
+ *  then shows in the all-day row instead of crashing the render, e.g. Postgres '24:00:00'). */
+export function toStartTime(time: string | null): string | null {
+  const hhmm = toHHmm(time)
+  return hhmm !== null && isTime(hhmm) ? hhmm : null
+}
+
+/** A stored zone the date helpers accept, kept as spelled (Intl would rename 'Asia/Kolkata' to
+ *  'Asia/Calcutta' on some runtimes); anything unusable falls back to the device's zone. */
+export function toSafeTimeZone(zone: string): string {
+  return isValidTimeZone(zone) ? zone : detectTimeZone()
+}
+
 export function rowToTask(row: TaskRow): Task {
   return {
     id: row.id,
@@ -24,7 +39,7 @@ export function rowToTask(row: TaskRow): Task {
     color: isTaskColor(row.color) ? row.color : DEFAULT_TASK_COLOR,
     subtasks: parseSubtasks(row.subtasks),
     date: row.date,
-    startTime: toHHmm(row.start_time),
+    startTime: toStartTime(row.start_time),
     durationMin: row.duration_min,
     isAllDay: row.is_all_day,
     completedAt: row.completed_at,
@@ -71,11 +86,11 @@ export function patchToUpdate(patch: TaskPatch): TablesUpdate<'tasks'> {
 
 export function rowToSettings(row: SettingsRow): Settings {
   return {
-    timezone: row.timezone,
+    timezone: toSafeTimeZone(row.timezone),
     timeFormat: toTimeFormat(row.time_format),
     weekStart: toSafeWeekStart(row.week_start),
-    dayStart: toHHmm(row.day_start) ?? '07:00',
-    dayEnd: toHHmm(row.day_end) ?? '22:00',
+    dayStart: toStartTime(row.day_start) ?? '07:00',
+    dayEnd: toStartTime(row.day_end) ?? '22:00',
     defaultDuration: row.default_duration,
     theme: toTheme(row.theme),
     updatedAt: row.updated_at,
