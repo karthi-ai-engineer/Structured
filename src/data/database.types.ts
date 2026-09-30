@@ -140,6 +140,36 @@ export type Database = {
         }
         Relationships: []
       }
+      mcp_batches: {
+        Row: {
+          created_at: string
+          id: string
+          ops: Json
+          summary: string | null
+          tool: string
+          undone_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id: string
+          ops?: Json
+          summary?: string | null
+          tool: string
+          undone_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ops?: Json
+          summary?: string | null
+          tool?: string
+          undone_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       settings: {
         Row: {
           break_minutes: number
