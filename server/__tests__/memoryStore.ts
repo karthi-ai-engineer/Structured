@@ -1,0 +1,176 @@
+// An in-memory TaskStore for unit tests: same contract as the Supabase store.
+import type { ISODate } from '../../src/core/dates.ts'
+import type { Task } from '../../src/core/tasks.ts'
+import type {
+  Batch,
+  NewTask,
+  SearchOptions,
+  StoreSettings,
+  TaskChanges,
+  TaskStore,
+} from '../store.ts'
+
+interface Row extends Task {
+  deletedAt: string | null
+  batchId: string | null
+  source: string
+}
+
+export class MemoryStore implements TaskStore {
+  rows = new Map<string, Row>()
+  batches = new Map<string, Batch>()
+  settings: StoreSettings = {
+    timezone: 'Asia/Tokyo',
+    timeFormat: '24h',
+    weekStart: 1,
+    dayStart: '07:00',
+    dayEnd: '22:00',
+    defaultDuration: 30,
+  }
+
+  /** Seeds an existing (app-created) task. */
+  seed(task: Partial<Task> & Pick<Task, 'id' | 'title'>): Task {
+    const row: Row = {
+      notes: null,
+      icon: null,
+      color: 'gray',
+      subtasks: [],
+      date: null,
+      startTime: null,
+      durationMin: 30,
+      isAllDay: false,
+      completedAt: null,
+      inboxOrder: 0,
+      createdAt: '2099-01-01T00:00:00.000Z',
+      updatedAt: '2099-01-01T00:00:00.000Z',
+      deletedAt: null,
+      batchId: null,
+      source: 'app',
+      ...task,
+    }
+    this.rows.set(row.id, row)
+    return row
+  }
+
+  private live(): Row[] {
+    return [...this.rows.values()].filter((r) => r.deletedAt === null)
+  }
+
+  private static task(r: Row): Task {
+    return {
+      id: r.id,
+      title: r.title,
+      notes: r.notes,
+      icon: r.icon,
+      color: r.color,
+      subtasks: r.subtasks.map((s) => ({ ...s })),
+      date: r.date,
+      startTime: r.startTime,
+      durationMin: r.durationMin,
+      isAllDay: r.isAllDay,
+      completedAt: r.completedAt,
+      inboxOrder: r.inboxOrder,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }
+  }
+
+  getSettings(): Promise<StoreSettings> {
+    return Promise.resolve({ ...this.settings })
+  }
+
+  listRange(from: ISODate, to: ISODate): Promise<Task[]> {
+    return Promise.resolve(
+      this.live()
+        .filter((r) => r.date !== null && r.date >= from && r.date <= to)
+        .map((r) => MemoryStore.task(r)),
+    )
+  }
+
+  listInbox(limit: number): Promise<Task[]> {
+    return Promise.resolve(
+      this.live()
+        .filter((r) => r.date === null && r.completedAt === null)
+        .slice(0, limit)
+        .map((r) => MemoryStore.task(r)),
+    )
+  }
+
+  listOpenBefore(before: ISODate, since: ISODate): Promise<Task[]> {
+    return Promise.resolve(
+      this.live()
+        .filter(
+          (r) => r.date !== null && r.date < before && r.date >= since && r.completedAt === null,
+        )
+        .map((r) => MemoryStore.task(r)),
+    )
+  }
+
+  search(query: string, options: SearchOptions): Promise<Task[]> {
+    const q = query.toLowerCase()
+    return Promise.resolve(
+      this.live()
+        .filter(
+          (r) => r.title.toLowerCase().includes(q) || (r.notes ?? '').toLowerCase().includes(q),
+        )
+        .filter((r) => options.includeCompleted || r.completedAt === null)
+        .filter((r) => !options.from || (r.date !== null && r.date >= options.from))
+        .filter((r) => !options.to || (r.date !== null && r.date <= options.to))
+        .slice(0, options.limit)
+        .map((r) => MemoryStore.task(r)),
+    )
+  }
+
+  getMany(ids: readonly string[], includeDeleted = false): Promise<Task[]> {
+    return Promise.resolve(
+      ids
+        .map((id) => this.rows.get(id))
+        .filter((r): r is Row => r !== undefined && (includeDeleted || r.deletedAt === null))
+        .map((r) => MemoryStore.task(r)),
+    )
+  }
+
+  insertMany(tasks: readonly NewTask[], batchId: string): Promise<Task[]> {
+    return Promise.resolve(
+      tasks.map((t) => {
+        const row: Row = {
+          ...t,
+          completedAt: null,
+          inboxOrder: 0,
+          createdAt: '2099-03-10T00:00:00.000Z',
+          updatedAt: '2099-03-10T00:00:00.000Z',
+          deletedAt: null,
+          batchId,
+          source: 'mcp',
+        }
+        this.rows.set(row.id, row)
+        return MemoryStore.task(row)
+      }),
+    )
+  }
+
+  update(id: string, changes: TaskChanges, batchId: string | null): Promise<Task> {
+    const row = this.rows.get(id)
+    if (!row) return Promise.reject(new Error(`no row ${id}`))
+    const { deletedAt, ...rest } = changes
+    Object.assign(row, rest)
+    if (deletedAt !== undefined) row.deletedAt = deletedAt
+    if (batchId !== null) row.batchId = batchId
+    return Promise.resolve(MemoryStore.task(row))
+  }
+
+  saveBatch(batch: Omit<Batch, 'undoneAt' | 'createdAt'>): Promise<void> {
+    this.batches.set(batch.id, { ...batch, undoneAt: null, createdAt: '2099-03-10T00:00:00.000Z' })
+    return Promise.resolve()
+  }
+
+  getBatch(id: string): Promise<Batch | null> {
+    return Promise.resolve(this.batches.get(id) ?? null)
+  }
+
+  markUndone(id: string, at: string): Promise<void> {
+    const batch = this.batches.get(id)
+    if (batch) batch.undoneAt = at
+    return Promise.resolve()
+  }
+}
