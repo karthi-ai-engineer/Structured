@@ -164,9 +164,10 @@ export function updateEnvFile(path, updates) {
   }
 
   const content = `${out.join('\n')}\n`
+  // Same folder (so rename is atomic) and, for .env.local, still matched by the .env.* ignore rule.
   const tmp = join(
     dirname(path),
-    `.${basename(path)}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`,
+    `${basename(path)}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`,
   )
   try {
     writeFileSync(tmp, content, { encoding: 'utf8', mode: 0o600 })
