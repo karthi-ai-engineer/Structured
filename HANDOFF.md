@@ -5,7 +5,7 @@
 ## Current status
 - **Phase:** 0 (Foundation), implementation in progress
 - **Branch:** `phase-0-foundation`
-- **Last updated:** 2026-09-30 13:20 UTC+9
+- **Last updated:** 2026-09-30 13:25 UTC+9
 - **Pipeline stage reached:** stage 7 (implement). Stages 1 to 6 are done:
   - plan, edge-case research, replan and design review: `docs/phases/phase-0/PLAN.md` (approved in `review-r2.md`)
   - tracking issue **#1** ("Phase 0: Foundation", labels `phase`, `phase-0`)
@@ -31,15 +31,22 @@
     - Production is deployed (commit `9c23319`) and passed the smoke check and the protection probe. In the owner's Chrome it shows **"DB connected"**. `PROD_URL` is in `.env.local` and the Vercel development env.
     - GitHub secrets `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL` are set (with `VERCEL_TOKEN`, 4 in total). The clean-clone rehearsal proved a tokenless `vercel build`, so `deploy.yml` should work at Ship.
     - 796 unit tests; CI green. Details and deviations: `docs/phases/phase-0/DEVLOG.md`.
-  - WP8 and WP9: not started.
-- **Resume with:** `resumeFrom: "implement"`, `skipWPs: ["WP1", "WP2", "WP3", "WP4", "WP5", "WP6", "WP7"]`
-- **IDs:** tracking issue #1, draft PR #2 (`phase-0-foundation` → `main`, `Closes #1`), ruleset: none yet (WP8).
+  - **WP8 done** (GitHub repo settings):
+    - **Ruleset 24225914** ("main protection", active, on `~DEFAULT_BRANCH`, no bypass actors) is applied from the committed `.github/rulesets/main.json` with the idempotent GET-then-PUT/POST snippet (PLAN §9.5); a second run took the PUT path and kept one ruleset. `main` now requires a PR (0 approvals, merge commits only) and the `ci-verify` check (GitHub Actions, integration 15368, strict off), and blocks force-pushes and deletion. The phase branch has no rules. PR #2 is still `CLEAN`/`MERGEABLE`.
+    - **CodeQL default setup** is `configured` with language auto-detection, but has no languages yet: `main` holds only Markdown, so the request naming `javascript-typescript` and `actions` was refused with HTTP 422 ("One or more languages you selected are not present in the repository"). Follow-up at Ship: see "Next".
+    - **Description and all 12 topics** are set.
+    - Details and deviations (including GitHub's default `require_extra_approval_for_unattributed_changes`, which has no effect with 0 approvals): `docs/phases/phase-0/DEVLOG.md`.
+  - WP9: not started.
+- **Resume with:** `resumeFrom: "implement"`, `skipWPs: ["WP1", "WP2", "WP3", "WP4", "WP5", "WP6", "WP7", "WP8"]`
+- **IDs:** tracking issue #1, draft PR #2 (`phase-0-foundation` → `main`, `Closes #1`), ruleset **24225914** ("main protection"; re-apply only with the PLAN §9.5 snippet, never a second POST).
 - **Pipeline for Phase 0:** `.claude/workflows/phase-pipeline.js`, with args in `docs/phases/phase-0/pipeline-args.json`
 - **Cloud resources created so far:**
   - Supabase project `structured` in ap-south-1, organization "Karthi labs" (it uses the second and last free slot). Its URL, ref, keys and database password are in `.env.local` and in the Vercel development env (never in the repo).
   - Vercel project (secret name: see `.env.local`) in the "Karthi Labs" team, deployed to production from this machine with `scripts/ci/deploy-prod.sh`. The production URL is `PROD_URL` in `.env.local` (never in the repo).
-- **Already set up:** GitHub repo; repo secrets `VERCEL_TOKEN` (Vercel scope "Karthi Labs"), `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL`; Supabase org "Karthi labs".
-- **Next:** WP8 covers the `main` ruleset (`.github/rulesets/main.json`, required check `ci-verify`), CodeQL default setup, and the repo description and topics. Then WP9 (CLAUDE.md part 2, README, final HANDOFF, the resume rehearsal and the final sweep), the QA rounds, final verification and Ship.
+- **Already set up:** GitHub repo; repo secrets `VERCEL_TOKEN` (Vercel scope "Karthi Labs"), `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL`; the `main` ruleset 24225914; CodeQL default setup (configured, auto-detect); the repo description and 12 topics; Supabase org "Karthi labs".
+- **Next:** WP9 (CLAUDE.md part 2, README, final HANDOFF, the resume rehearsal and the final sweep), then the QA rounds, final verification and Ship.
+  - **Post-merge follow-up for Ship (PLAN §17.1 step 8): CodeQL languages.** Right after the merge, run `gh api repos/karthi-ai-engineer/Structured/code-scanning/default-setup --jq '.state, .languages'`. It must show `configured` with `javascript-typescript` and `actions` (default setup adds languages by itself once `main` has code). If a language is missing, run the PLAN §9.5 request again: `printf '{"state":"configured","query_suite":"default","languages":["javascript-typescript","actions"]}' | gh api -X PATCH repos/karthi-ai-engineer/Structured/code-scanning/default-setup --input -`. The same follow-up is in the PR #2 body under "Post-merge follow-ups".
+  - **The Ship merge must use `gh pr merge 2 --merge`** (the ruleset allows merge commits only) and needs a green `ci-verify` on the PR head.
   - **Open item from WP7 (for QA or the owner):** repeat M2 against production (AC 24 bullet 2). Delete the `settings` row with a one-off secret-key command, then load production in the owner's Chrome: the first load must show `Settings row created`, and a reload `Settings row found`; `node scripts/supabase.mjs settings` must show Chrome's zone. The WP7 session was not permitted to delete the row, so it was left as is (DEVLOG WP7, deviation 7).
   - **WP9 must add to the HANDOFF link steps:** `vercel link` rewrites `.env.local` (it pulls the development env) and appends `.vercel`/`.env*` to `.gitignore`. Back up `.env.local` before linking, and run `git checkout -- .gitignore` after it (DEVLOG WP7, deviation 4).
   - Production serves commit `9c23319`; the next production deploy is the `Deploy` workflow at Ship. To rerun the smoke check without deploying, see DEVLOG WP7 "Notes for testers".
@@ -52,7 +59,7 @@
   - Local Node 26 prints an `EBADENGINE` warning for `engines.node = 24.x`; this is expected (CI and Vercel use Node 24).
   - The owner's commit `28df4fd` (balanced team-pipeline profile) landed after the plan baseline `1195168`; WP2 kept its `CLAUDE.md` paragraph verbatim (see DEVLOG WP1 and WP2).
   - Local gate: `npm run verify` (typecheck, lint, format:check, test:coverage, build, and `npm run check`). Run `npm run check:commits` and `npm run check:leaks` before every push; run `node scripts/checks/commits.mjs --text-file <file>` on any PR, issue or release text before `gh … create/edit`.
-  - CI: `CI / ci-verify` runs on every push and PR. The `main` ruleset (WP8) will require it; never rename the job or add path filters.
+  - CI: `CI / ci-verify` runs on every push and PR. The `main` ruleset (24225914) requires it; never rename the job, add path filters or use `[skip ci]`, or the merge into `main` stays blocked.
   - A local `npm run build` with `.env.local` present bundles the real Supabase URL and publishable key into `dist/`. `dist/` is gitignored; never commit, upload or paste it. CI builds are unconfigured by design, and show "Database not configured". The same applies to `.vercel/` after a local deploy (`project.json`, `.env.production.local` and `output/`).
   - The Vercel development env is the source of truth for `.env.local` on other machines. Run `npm run env:sync-vercel` (a read-only report that prints names only) before any `vercel env pull`, and `npm run env:sync-vercel -- --apply` after adding a local key.
   - Local production deploy (same script as CI): `PROD_URL="$(node scripts/lib/env-file.mjs get .env.local PROD_URL)" DEPLOY_LOG_DIR=<scratch folder> bash scripts/ci/deploy-prod.sh`. It needs the link (`.vercel/project.json`) and prints no URLs; delete the log folder afterwards, because it holds the generated deployment URL.

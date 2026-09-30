@@ -760,3 +760,76 @@ Every scratch file that held a URL, an ID or a value (`v-*.json`, the deploy log
 - **`npm run env:sync-vercel`** is read-only and prints names only. It needs the link (`.vercel/project.json`) and refuses to run without it.
 - **`deploy.yml` runs first in the Ship stage**, because it has to be on `main`. Its script path was run twice locally, and once on a clean clone with a tokenless build.
 - **Open item:** M2 against production (deviation 7).
+
+## WP8: GitHub repo settings: ruleset, CodeQL default setup, description and topics
+
+**Date:** 2026-09-30 (UTC+9). **Branch:** `phase-0-foundation`. **Tracking issue:** #1. **PR:** #2 (draft).
+
+### What was done
+1. **Ruleset definition** (commit `34730a7`, `ci: add main branch ruleset definition`): `.github/rulesets/main.json`, exactly as §10.5. `npm run format` left it unchanged. `check:hygiene` and `check:leaks` pass with it.
+2. **Required check confirmed before applying.** After the push, the push run 36668022072 and the PR run 36668025049 both passed, and `gh pr checks 2` listed `ci-verify` twice. The check runs of HEAD report `app.id = 15368` (`github-actions`), which matches the ruleset's `integration_id`.
+3. **Ruleset applied idempotently** (§9.5, P37):
+   - The GET by name found nothing, so the script used POST. That created ruleset **24225914** ("main protection", `enforcement: active`, target `branch`, include `~DEFAULT_BRANCH`, no bypass actors, `current_user_can_bypass: never`).
+   - The same script was run a second time. It found ID 24225914 and used PUT. The ruleset kept the same ID and `updated_at`, and there is still exactly one "main protection" ruleset. So re-running WP8 on another machine is safe.
+   - The API accepted `allowed_merge_methods: ["merge"]` (no 422), so the plan's fallback (dropping the key) was not needed.
+4. **CodeQL default setup** (§9.5, review r2 N3): enabled with language auto-detection. The state is `configured`, but it has no languages yet, because `main` holds only Markdown. See deviation 2.
+5. **Description and topics** (§9.5): set with `gh repo edit`. `gh repo view --json description,repositoryTopics` shows the planned description and all 12 topics.
+6. **PR #2 body**: added a "Post-merge follow-ups" section for CodeQL. Before `gh pr edit`, the body passed `check:commits --text-file`, the §10.4 PR-text word check (no output) and `check:leaks --stdin`.
+
+### Commands run
+```
+gh api user --jq .login; git config user.email; git pull --ff-only; netstat -ano; npm run db:ping   # opening ritual
+gh api repos/$R/rulesets; gh api repos/$R/code-scanning/default-setup; gh repo view $R --json description,repositoryTopics
+gh api repos/$R/commits/<HEAD>/check-runs --jq '.check_runs[] | {name, app_id: .app.id}'   # 15368
+# docs.github.com: rulesets REST (pull_request and required_status_checks parameters), code-scanning default-setup PATCH,
+# "Available rules for rulesets", "Configuring default setup", changelog "default setup automatically updates when the languages change"
+npx prettier --write .github/rulesets/main.json; npm run format; npm run check:hygiene; npm run check:leaks
+git commit -m "ci: add main branch ruleset definition"; npm run check:commits; git push origin phase-0-foundation
+gh run watch <push run> --exit-status; gh run watch <PR run> --exit-status; gh pr checks 2
+ID="$(gh api repos/$R/rulesets --jq '.[] | select(.name=="main protection") | .id')"   # then PUT or POST (§9.5), run twice
+gh api repos/$R/rules/branches/main; gh api repos/$R/rules/branches/phase-0-foundation
+printf '{"state":"configured","query_suite":"default","languages":["javascript-typescript","actions"]}' | gh api -X PATCH repos/$R/code-scanning/default-setup --input -
+printf '{"state":"configured","query_suite":"default"}' | gh api -X PATCH repos/$R/code-scanning/default-setup --input -
+gh repo edit $R --description "<§9.5 text>" --add-topic planner,time-blocking,<…>,model-context-protocol
+gh pr view 2 --json isDraft,mergeStateStatus,mergeable; gh api graphql (pullRequest mergeStateStatus)
+node scripts/checks/commits.mjs --text-file <PR body>; <§10.4 PR-text word check>; gh pr edit 2 --body-file <PR body>
+npm run verify; npm run check:commits; npm run check:leaks
+gh run view <id> --log | node scripts/checks/leaks.mjs --stdin   # every CI run of this WP
+```
+`R` is `karthi-ai-engineer/Structured`. The scratch output files held no secrets and were deleted at the end.
+
+### Verification results
+| Check | Result |
+|---|---|
+| Rulesets (AC 31) | `gh api repos/$R/rulesets` lists exactly one ruleset: `{"id":24225914,"name":"main protection","enforcement":"active","target":"branch","source_type":"Repository"}` |
+| Effective rules on `main` (AC 31) | `gh api repos/$R/rules/branches/main` has 4 rules, all from ruleset 24225914: `deletion`; `non_fast_forward`; `pull_request` (`required_approving_review_count: 0`, `allowed_merge_methods: ["merge"]`, `dismiss_stale_reviews_on_push`, `require_code_owner_review`, `require_last_push_approval` and `required_review_thread_resolution` all `false`, `required_reviewers: []`); `required_status_checks` (`[{"context":"ci-verify","integration_id":15368}]`, `strict_required_status_checks_policy: false`, `do_not_enforce_on_create: false`) |
+| Phase branch unaffected | `gh api repos/$R/rules/branches/phase-0-foundation` is `[]` |
+| Idempotency (P37) | The second run took the PUT path: same ID, one ruleset |
+| Code scanning (AC 32) | `state: configured`, `languages: []`, `query_suite: default` (deviation 2; the follow-up is recorded in HANDOFF and in the PR body) |
+| Presentation (AC 34, first bullet) | The description is the §9.5 text, and there are 12 topics: capacitor, mcp, model-context-protocol, planner, productivity, react, supabase, tailwindcss, time-blocking, todo, typescript, vite |
+| PR mergeability | `gh pr view 2`: `isDraft: true`, `mergeStateStatus: CLEAN`, `mergeable: MERGEABLE`. Not `BLOCKED` |
+| `ci-verify` for `34730a7` | push run 36668022072 and PR run 36668025049 both `success` |
+| `npm run verify` | exit 0: 25 test files, 796 tests, `src/core` coverage 99.45 / 99.13 / 100 / 99.4, build ok, `check` ok |
+
+### Deviations
+1. **The server adds a pull-request parameter the plan did not know about:** `require_extra_approval_for_unattributed_changes: true`. It is GitHub's default, and the committed JSON does not set it. The docs ("Available rules for rulesets") call it "Require an additional approval for unattributed Copilot pull requests". It applies only when Copilot opens a PR under its own app identity, and it "has no effect if the ruleset requires zero approvals". So it cannot block the Ship merge. `main.json` stays exactly as §10.5, and a re-apply keeps the default.
+2. **CodeQL: configured with auto-detection, and the language check moves to Ship.**
+   - The §9.5 PATCH with `languages: ["javascript-typescript","actions"]` was refused with **HTTP 422: "One or more languages you selected are not present in the repository."** `main` holds only `.md` files and `.gitignore` (`git ls-tree -r origin/main`).
+   - Following review r2 N3, it was retried once without `languages`. That was accepted (`{"run_id":0,"run_url":""}`, no analysis run), and the state is now `configured` with `languages: []`.
+   - GitHub's changelog ("Code scanning default setup automatically updates when the languages in the repository change", and "…automatically includes all CodeQL supported languages") says the configuration picks up new languages by itself. So the first push of code to `main` (the Ship merge) should start JavaScript/TypeScript and Actions analysis.
+   - **Follow-up at Ship (§17.1 step 8):** confirm that `gh api repos/$R/code-scanning/default-setup --jq '.state, .languages'` shows `configured` with `javascript-typescript` and `actions`. If a language is missing, run the §9.5 PATCH with explicit languages again; it will then find them. The follow-up is recorded in HANDOFF "Next" and in the PR body under "Post-merge follow-ups".
+   - `codeql.yml` was **not** added. The feature is available; only the languages are missing from `main`.
+   - Review r2 N3 also suggested a §1.1 deviation row for deliverable 11c. No WP has edited the approved `docs/phases/phase-0/PLAN.md`, so this entry, HANDOFF and the PR body record it instead. AC 32 accepts these as the record.
+3. **`gh api repos/$R/code-scanning/analyses` answers 404 "no analysis found".** This is expected until the first analysis, which runs after Ship. gh also printed an unrelated `admin:repo_hook` scope hint on that call. No scope change was needed or made.
+
+### Notes for testers
+- **Ruleset ID 24225914.** To re-apply it, run the §9.5 GET-then-PUT/POST snippet from the repo root. It is idempotent (proven above). Never create a second "main protection" ruleset. Phase 1's team workflow adds `gate/final-verification` to this same ruleset by name.
+- **The ruleset protects only the default branch (`~DEFAULT_BRANCH`).** Pushes to `phase-0-foundation` are unaffected. Merging into `main` now needs:
+  - a PR
+  - a green `ci-verify` from GitHub Actions (integration 15368)
+  - a merge commit (`gh pr merge --merge`)
+
+  Squash and rebase are refused for `main`, even though the repo settings still allow them (D0-20). Nobody can bypass the ruleset, the owner included (`current_user_can_bypass: never`).
+- **Do not test the protection by pushing to `main`.** The API evidence above is the check.
+- **CodeQL has no analysis yet.** No CodeQL check appears on PR #2 until `main` has code; this is expected (deviation 2).
+- **The required check is only `ci-verify`.** CodeQL results are not a merge gate.
