@@ -291,7 +291,7 @@ describe('changing tasks', () => {
 })
 
 describe('entry (secret path)', () => {
-  it('answers 404 for a wrong or missing secret, and 503 when misconfigured', async () => {
+  it('answers 404 for a wrong or missing secret, and when misconfigured', async () => {
     const entry = entryFor(store)
     const post = (path: string) =>
       entry(
@@ -310,7 +310,7 @@ describe('entry (secret path)', () => {
     })
     expect(
       (await broken(new Request(`http://app.test/api/mcp/${SECRET}`, { method: 'POST' }))).status,
-    ).toBe(503)
+    ).toBe(404)
   })
 
   it('parses and compares secrets safely', () => {

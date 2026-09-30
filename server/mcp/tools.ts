@@ -37,6 +37,7 @@ import {
   type TaskDraft,
 } from '../../src/core/tasks.ts'
 import {
+  ROW_NOT_FOUND,
   StoreError,
   type BatchOp,
   type NewTask,
@@ -53,6 +54,8 @@ export interface ToolDeps {
 
 const COLOR_NAMES = TASK_COLORS.map((c) => c.name) as [string, ...string[]]
 const MAX_RANGE_DAYS = 31
+/** How far back "overdue" looks, in get_context and list_overdue alike. */
+const OVERDUE_DAYS = 14
 
 const isoDate = z
   .string()
@@ -145,7 +148,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         const { settings, today, nowMinutes } = await clock()
         const [inbox, overdue] = await Promise.all([
           store.listInbox(500),
-          store.listOpenBefore(today, addDays(today, -30)),
+          store.listOpenBefore(today, addDays(today, -OVERDUE_DAYS)),
         ])
         const hh = String(Math.floor(nowMinutes / 60)).padStart(2, '0')
         const mm = String(nowMinutes % 60).padStart(2, '0')
@@ -161,6 +164,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           week_starts_on: formatDateLabel(addDays('2023-01-01', settings.weekStart), 'EEEE'),
           inbox_count: inbox.length,
           overdue_count: overdue.length,
+          overdue_window_days: OVERDUE_DAYS,
           colors: COLOR_NAMES,
           icons: TASK_ICON_NAMES,
         }
@@ -273,7 +277,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     ({ days_back }) =>
       guarded(async () => {
         const { today } = await clock()
-        const tasks = await store.listOpenBefore(today, addDays(today, -(days_back ?? 14)))
+        const tasks = await store.listOpenBefore(
+          today,
+          addDays(today, -(days_back ?? OVERDUE_DAYS)),
+        )
         return ok(`${plural(tasks.length, 'overdue task')}.`, { tasks: tasks.map((t) => view(t)) })
       }),
   )
@@ -309,23 +316,16 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   // ---------------------------------------------------------------------------------------------
   // Write tools
 
-  /** Warnings for planned tasks, checked against existing tasks and each other (in order). */
+  /** Warnings for planned tasks, checked against the existing tasks on the same dates (only
+   *  those dates are loaded) and against each other, in order. */
   async function warningsFor(
-    planned: readonly (PlannedTask & { id?: string })[],
+    planned: readonly PlannedTask[],
     ignoreIds: ReadonlySet<string>,
   ): Promise<string[][]> {
     const { settings, today, nowMinutes } = await clock()
-    const dates = planned
-      .map((p) => p.date)
-      .filter((d): d is ISODate => d !== null)
-      .sort()
-    const first = dates[0]
-    const last = dates[dates.length - 1]
-    const existing = first && last ? await store.listRange(first, last) : []
-    const accepted: Pick<
-      Task,
-      'title' | 'isAllDay' | 'startTime' | 'durationMin' | 'completedAt' | 'date'
-    >[] = []
+    const dates = planned.map((p) => p.date).filter((d): d is ISODate => d !== null)
+    const existing = await store.listDates(dates)
+    const accepted: (PlannedTask & { completedAt: null })[] = []
     return planned.map((p) => {
       const sameDay = [
         ...existing.filter((t) => t.date === p.date && !ignoreIds.has(t.id)),
@@ -367,11 +367,11 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     ({ tasks, dry_run }) =>
       guarded(async () => {
         const { settings } = await clock()
-        const drafts: (NewTask & { iconWarning?: string })[] = tasks.map((t) => {
+        const drafts = tasks.map((t) => {
           const date = t.date ?? null
           const isAllDay = date !== null && t.all_day === true
           const icon = toStoredIcon(t.icon)
-          return {
+          const task: NewTask = {
             id: deps.newId(),
             title: normalizeTitle(t.title),
             notes: t.notes?.trim() ? t.notes.trim() : null,
@@ -386,106 +386,100 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
             startTime: date !== null && !isAllDay ? (t.start_time ?? null) : null,
             durationMin: t.duration_min ?? settings.defaultDuration,
             isAllDay,
-            iconWarning:
-              t.icon && icon === null ? `Unknown icon "${t.icon}" was left out` : undefined,
+          }
+          const problems = validateDraft(task)
+          if (date === null && t.start_time !== undefined) {
+            problems.push('Give a date to set a start time')
+          }
+          return {
+            task,
+            problems,
+            iconWarning: t.icon && icon === null ? `Unknown icon "${t.icon}" was left out` : null,
           }
         })
         const problems = drafts
-          .map((d, index) => ({ index, title: d.title, problems: validateDraft(d) }))
+          .map((d, index) => ({ index, title: d.task.title, problems: d.problems }))
           .filter((p) => p.problems.length > 0)
         if (problems.length > 0) {
           return fail(`Nothing was created: ${plural(problems.length, 'task')} need fixing.`, {
             problems,
           })
         }
-        const warnings = (await warningsFor(drafts.map(asPlanned), new Set())).map((w, i) => {
+        const warnings = (
+          await warningsFor(
+            drafts.map((d) => asPlanned(d.task)),
+            new Set(),
+          )
+        ).map((w, i) => {
           const iconWarning = drafts[i]?.iconWarning
           return iconWarning ? [...w, iconWarning] : w
         })
         const warningCount = warnings.reduce((n, w) => n + w.length, 0)
-        const preview = (d: NewTask, i: number) =>
-          view(
-            { ...d, completedAt: null, inboxOrder: 0, createdAt: '', updatedAt: '' },
-            warnings[i],
-          )
+        const asTask = (t: NewTask): Task => ({
+          ...t,
+          completedAt: null,
+          inboxOrder: 0,
+          createdAt: '',
+          updatedAt: '',
+        })
 
         if (dry_run) {
           return ok(
             `Dry run: ${plural(drafts.length, 'task')} would be created, ${plural(warningCount, 'warning')}. Nothing was written.`,
             {
               dry_run: true,
-              tasks: drafts
-                .map(preview)
-                .map((t) => Object.fromEntries(Object.entries(t).filter(([k]) => k !== 'id'))),
+              tasks: drafts.map((d, i) => {
+                const { id: _id, ...rest } = view(asTask(d.task), warnings[i])
+                void _id
+                return rest
+              }),
             },
           )
         }
         const batchId = deps.newId()
-        const ops: BatchOp[] = drafts.map((d) => ({ kind: 'create', id: d.id }))
         const summary = `Created ${plural(drafts.length, 'task')}`
-        await store.saveBatch({ id: batchId, tool: 'create_tasks', summary, ops })
-        const rows: NewTask[] = drafts.map((d) => ({
-          id: d.id,
-          title: d.title,
-          notes: d.notes,
-          icon: d.icon,
-          color: d.color,
-          subtasks: d.subtasks,
-          date: d.date,
-          startTime: d.startTime,
-          durationMin: d.durationMin,
-          isAllDay: d.isAllDay,
-        }))
-        const created = await store.insertMany(rows, batchId)
+        await store.saveBatch({
+          id: batchId,
+          tool: 'create_tasks',
+          summary,
+          ops: drafts.map((d) => ({
+            kind: 'create',
+            id: d.task.id,
+            after: pick(asTask(d.task), FIELDS),
+          })),
+        })
+        // One insert statement: all tasks are created, or none.
+        const created = await store.insertMany(
+          drafts.map((d) => d.task),
+          batchId,
+        )
         const byId = new Map(created.map((t) => [t.id, t]))
         return ok(
           `${summary} (batch ${batchId}), ${plural(warningCount, 'warning')}. They appear live in the planner. Undo with undo_batch.`,
           {
             batch_id: batchId,
-            tasks: drafts.map((d, i) =>
-              view(
-                byId.get(d.id) ?? {
-                  ...d,
-                  completedAt: null,
-                  inboxOrder: 0,
-                  createdAt: '',
-                  updatedAt: '',
-                },
-                warnings[i],
-              ),
-            ),
+            tasks: drafts.map((d, i) => view(byId.get(d.task.id) ?? asTask(d.task), warnings[i])),
           },
         )
       }),
   )
 
-  /** Records the current values of the fields a change touches, for undo. */
-  function beforeOf(task: Task, changes: TaskChanges): TaskChanges {
-    const before: TaskChanges = {}
-    if (changes.title !== undefined) before.title = task.title
-    if (changes.notes !== undefined) before.notes = task.notes
-    if (changes.icon !== undefined) before.icon = task.icon
-    if (changes.color !== undefined) before.color = task.color
-    if (changes.subtasks !== undefined) before.subtasks = task.subtasks
-    if (changes.durationMin !== undefined) before.durationMin = task.durationMin
-    if (changes.completedAt !== undefined) before.completedAt = task.completedAt
+  /**
+   * The stored changes for a scheduling patch, normalized like the app does, plus problems.
+   * - A start time makes an all-day task timed (unless all_day is given explicitly).
+   * - A start time or all-day without a date is a problem (the inbox has neither).
+   * - A completed task moved to the inbox is reopened (the inbox lists only open tasks).
+   */
+  function scheduleChanges(task: Task, input: Partial<TaskDraft>) {
+    const patch: Partial<TaskDraft> = { ...input }
     if (
-      changes.date !== undefined ||
-      changes.startTime !== undefined ||
-      changes.isAllDay !== undefined
+      patch.startTime !== undefined &&
+      patch.startTime !== null &&
+      patch.isAllDay === undefined &&
+      task.isAllDay
     ) {
-      before.date = task.date
-      before.startTime = task.startTime
-      before.isAllDay = task.isAllDay
+      patch.isAllDay = false
     }
-    return before
-  }
-
-  /** The stored changes for a scheduling patch, normalized like the app does. */
-  function scheduleChanges(
-    task: Task,
-    patch: Partial<TaskDraft> & { completedAt?: string | null },
-  ) {
     const merged = applyPatch(task, patch)
     const changes: TaskChanges = { ...patch }
     if (patch.date !== undefined || patch.startTime !== undefined || patch.isAllDay !== undefined) {
@@ -493,12 +487,24 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       changes.startTime = merged.startTime
       changes.isAllDay = merged.isAllDay
     }
-    // A completed task moved to the inbox is reopened (the inbox lists only open tasks).
     if (merged.date === null && task.completedAt !== null && patch.date === null) {
       changes.completedAt = null
       merged.completedAt = null
     }
-    return { merged, changes }
+    const problems = validateDraft(merged)
+    if (
+      merged.date === null &&
+      ((input.startTime !== undefined && input.startTime !== null) || input.isAllDay === true)
+    ) {
+      problems.push('Give a date to set a start time or all-day')
+    }
+    return { merged, changes, problems }
+  }
+
+  /** The undo record of an edit: the old and the new values of every field it touches. */
+  function updateOp(task: Task, changes: TaskChanges): BatchOp {
+    const keys = changedKeys(changes)
+    return { kind: 'update', id: task.id, before: pick(task, keys), after: pick(changes, keys) }
   }
 
   server.registerTool(
@@ -506,7 +512,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     {
       title: 'Update a task',
       description:
-        'Changes fields of one task (only the fields you pass). date: null moves it to the inbox. Returns warnings; undoable with undo_batch.',
+        'Changes fields of one task (only the fields you pass). date: null moves it to the inbox; start_time on an all-day task makes it timed. Returns warnings; undoable with undo_batch.',
       inputSchema: z.object({
         id: taskId,
         title: title.optional(),
@@ -526,15 +532,22 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         const patch: Partial<TaskDraft> = {}
         if (input.title !== undefined) patch.title = normalizeTitle(input.title)
         if (input.notes !== undefined) patch.notes = input.notes?.trim() ? input.notes.trim() : null
-        if (input.icon !== undefined) patch.icon = toStoredIcon(input.icon)
+        if (input.icon !== undefined) {
+          const icon = toStoredIcon(input.icon)
+          if (input.icon !== null && input.icon.trim() !== '' && icon === null) {
+            return fail(`Unknown icon "${input.icon}". Nothing was changed.`, {
+              icons: TASK_ICON_NAMES,
+            })
+          }
+          patch.icon = icon
+        }
         if (input.color !== undefined) patch.color = input.color as TaskDraft['color']
         if (input.date !== undefined) patch.date = input.date
         if (input.start_time !== undefined) patch.startTime = input.start_time
         if (input.duration_min !== undefined) patch.durationMin = input.duration_min
         if (input.all_day !== undefined) patch.isAllDay = input.all_day
         if (Object.keys(patch).length === 0) return fail('Pass at least one field to change.')
-        const { merged, changes } = scheduleChanges(task, patch)
-        const problems = validateDraft(merged)
+        const { merged, changes, problems } = scheduleChanges(task, patch)
         if (problems.length > 0) return fail('Nothing was changed.', { problems })
         const [warnings] = await warningsFor([asPlanned(merged)], new Set([task.id]))
         const batchId = deps.newId()
@@ -542,7 +555,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           id: batchId,
           tool: 'update_task',
           summary: `Updated "${task.title}"`,
-          ops: [{ kind: 'update', id: task.id, before: beforeOf(task, changes) }],
+          ops: [updateOp(task, changes)],
         })
         const updated = await store.update(task.id, changes, batchId)
         return ok(`Updated "${updated.title}" (batch ${batchId}).`, {
@@ -557,7 +570,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     {
       title: 'Move tasks',
       description:
-        'Reschedules tasks in one undoable batch (for example to replan overdue work). Each move: id, date (null = inbox), and start_time (required when the task has no time yet and is not all-day). Validates everything first.',
+        'Reschedules tasks in one undoable batch (for example to replan overdue work). Each move: id, date (null = inbox), and start_time (required when the task has no time yet and is not all-day; it makes an all-day task timed). Validates everything first.',
       inputSchema: z.object({
         moves: z
           .array(z.object({ id: taskId, date: isoDate.nullable(), start_time: hhmm.optional() }))
@@ -568,8 +581,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     ({ moves }) =>
       guarded(async () => {
         const ids = moves.map((m) => m.id)
-        if (new Set(ids).size !== ids.length)
+        if (new Set(ids).size !== ids.length) {
           return fail('Each task may be moved only once per call.')
+        }
         const tasks = await store.getMany(ids)
         const byId = new Map(tasks.map((t) => [t.id, t]))
         const missing = ids.filter((id) => !byId.has(id))
@@ -581,7 +595,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           return { task, ...scheduleChanges(task, patch) }
         })
         const problems = plans
-          .map((p) => ({ id: p.task.id, title: p.task.title, problems: validateDraft(p.merged) }))
+          .map((p) => ({ id: p.task.id, title: p.task.title, problems: p.problems }))
           .filter((p) => p.problems.length > 0)
         if (problems.length > 0) return fail('Nothing was moved.', { problems })
         const warnings = await warningsFor(
@@ -593,15 +607,21 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           id: batchId,
           tool: 'move_tasks',
           summary: `Moved ${plural(plans.length, 'task')}`,
-          ops: plans.map((p) => ({
-            kind: 'update',
-            id: p.task.id,
-            before: beforeOf(p.task, p.changes),
-          })),
+          ops: plans.map((p) => updateOp(p.task, p.changes)),
         })
+        // Each task gets its own values, so the rows are written one by one. If one fails, the
+        // answer names the batch and the rows already moved, so undo_batch can revert them.
         const moved: Record<string, unknown>[] = []
         for (const [i, p] of plans.entries()) {
-          moved.push(view(await store.update(p.task.id, p.changes, batchId), warnings[i]))
+          try {
+            moved.push(view(await store.update(p.task.id, p.changes, batchId), warnings[i]))
+          } catch (error) {
+            if (!(error instanceof StoreError)) throw error
+            return fail(
+              `Moved ${moved.length} of ${plans.length} tasks, then the database refused the rest (${error.code}). Revert the moved ones with undo_batch.`,
+              { batch_id: batchId, moved },
+            )
+          }
         }
         return ok(`Moved ${plural(moved.length, 'task')} (batch ${batchId}).`, {
           batch_id: batchId,
@@ -620,38 +640,34 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     },
     ({ ids, done }) =>
       guarded(async () => {
-        const tasks = await store.getMany([...new Set(ids)])
+        const unique = [...new Set(ids)]
+        const tasks = await store.getMany(unique)
+        const missing = unique.filter((id) => !tasks.some((t) => t.id === id))
+        if (tasks.length === 0) return fail('None of these tasks exist.', { missing })
         const changing = tasks.filter((t) => (t.completedAt !== null) !== done)
-        const missing = ids.filter((id) => !tasks.some((t) => t.id === id))
         if (changing.length === 0) {
           return ok(
             `Nothing to change: ${plural(tasks.length, 'task')} already ${done ? 'done' : 'open'}.`,
             { missing },
           )
         }
-        const at = nowIso(deps.now())
+        const changes: TaskChanges = { completedAt: done ? nowIso(deps.now()) : null }
         const batchId = deps.newId()
         await store.saveBatch({
           id: batchId,
           tool: 'set_completion',
           summary: `${done ? 'Completed' : 'Reopened'} ${plural(changing.length, 'task')}`,
-          ops: changing.map((t) => ({
-            kind: 'update',
-            id: t.id,
-            before: { completedAt: t.completedAt },
-          })),
+          ops: changing.map((t) => updateOp(t, changes)),
         })
-        const updated: Record<string, unknown>[] = []
-        for (const t of changing) {
-          updated.push(view(await store.update(t.id, { completedAt: done ? at : null }, batchId)))
-        }
+        // One statement: all rows change, or none.
+        const updated = await store.updateMany(
+          changing.map((t) => t.id),
+          changes,
+          batchId,
+        )
         return ok(
           `${done ? 'Completed' : 'Reopened'} ${plural(updated.length, 'task')} (batch ${batchId}).`,
-          {
-            batch_id: batchId,
-            tasks: updated,
-            missing,
-          },
+          { batch_id: batchId, tasks: updated.map((t) => view(t)), missing },
         )
       }),
   )
@@ -667,9 +683,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     },
     ({ ids }) =>
       guarded(async () => {
-        const tasks = await store.getMany([...new Set(ids)])
-        if (tasks.length === 0) return fail('None of these tasks exist.')
-        const at = nowIso(deps.now())
+        const unique = [...new Set(ids)]
+        const tasks = await store.getMany(unique)
+        const missing = unique.filter((id) => !tasks.some((t) => t.id === id))
+        if (tasks.length === 0) return fail('None of these tasks exist.', { missing })
         const batchId = deps.newId()
         await store.saveBatch({
           id: batchId,
@@ -677,12 +694,18 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           summary: `Deleted ${plural(tasks.length, 'task')}`,
           ops: tasks.map((t) => ({ kind: 'delete', id: t.id })),
         })
-        for (const t of tasks) await store.update(t.id, { deletedAt: at }, batchId)
+        // One statement: all rows are deleted, or none.
+        await store.updateMany(
+          tasks.map((t) => t.id),
+          { deletedAt: nowIso(deps.now()) },
+          batchId,
+        )
         return ok(
           `Deleted ${plural(tasks.length, 'task')} (batch ${batchId}). Undo with undo_batch.`,
           {
             batch_id: batchId,
             deleted: tasks.map((t) => ({ id: t.id, title: t.title })),
+            missing,
           },
         )
       }),
@@ -693,7 +716,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     {
       title: 'Add subtasks',
       description:
-        'Appends checklist items to a task (break a task into concrete steps). Undoable.',
+        'Appends checklist items to a task (break a task into concrete steps). Undoable: undo removes only these items.',
       inputSchema: z.object({ task_id: taskId, titles: z.array(title).min(1).max(50) }),
     },
     ({ task_id, titles }) =>
@@ -710,7 +733,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           id: batchId,
           tool: 'add_subtasks',
           summary: `Added ${plural(added.length, 'subtask')} to "${task.title}"`,
-          ops: [{ kind: 'update', id: task.id, before: { subtasks: task.subtasks } }],
+          ops: [{ kind: 'subtasks_added', id: task.id, subtaskIds: added.map((s) => s.id) }],
         })
         const updated = await store.update(
           task.id,
@@ -719,10 +742,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         )
         return ok(
           `Added ${plural(added.length, 'subtask')} to "${task.title}" (batch ${batchId}).`,
-          {
-            batch_id: batchId,
-            task: view(updated),
-          },
+          { batch_id: batchId, task: view(updated) },
         )
       }),
   )
@@ -732,35 +752,123 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     {
       title: 'Undo a batch',
       description:
-        'Reverts everything one earlier write did (created tasks are removed, edits restored, deletions brought back). Pass the batch_id that write returned.',
-      inputSchema: z.object({ batch_id: taskId }),
+        'Reverts one earlier write (created tasks are removed, edits restored, deletions brought back). Changes the user made to a task since then are kept: such tasks are skipped and listed, unless force is true. Safe to call again after a partial undo.',
+      inputSchema: z.object({
+        batch_id: taskId,
+        force: z.boolean().optional().describe('Also revert tasks the user changed since'),
+      }),
     },
-    ({ batch_id }) =>
+    ({ batch_id, force }) =>
       guarded(async () => {
         const batch = await store.getBatch(batch_id)
         if (!batch) return fail(`No batch with id ${batch_id}.`)
-        if (batch.undoneAt)
+        if (batch.undoneAt) {
           return fail(
             `Batch ${batch_id} ("${batch.summary}") was already undone at ${batch.undoneAt}.`,
           )
+        }
         const at = nowIso(deps.now())
+        const current = new Map(
+          (await store.getMany([...new Set(batch.ops.map((op) => op.id))], true)).map((t) => [
+            t.id,
+            t,
+          ]),
+        )
+        const reverted: string[] = []
+        const skipped: { id: string; title: string }[] = []
+        const gone: string[] = []
         const failed: string[] = []
+
         for (const op of [...batch.ops].reverse()) {
+          const task = current.get(op.id)
+          if (!task) {
+            gone.push(op.id)
+            continue
+          }
+          let changes: TaskChanges
+          if (op.kind === 'create') {
+            if (!force && op.after && !sameValues(task, op.after)) {
+              skipped.push({ id: task.id, title: task.title })
+              continue
+            }
+            changes = { deletedAt: at }
+          } else if (op.kind === 'update') {
+            if (sameValues(task, op.before)) {
+              reverted.push(op.id) // already reverted (for example by an earlier, partial undo)
+              continue
+            }
+            if (!force && op.after && !sameValues(task, op.after)) {
+              skipped.push({ id: task.id, title: task.title })
+              continue
+            }
+            changes = op.before
+          } else if (op.kind === 'delete') {
+            changes = { deletedAt: null }
+          } else {
+            const remove = new Set(op.subtaskIds)
+            changes = { subtasks: task.subtasks.filter((s) => !remove.has(s.id)) }
+          }
           try {
-            if (op.kind === 'create') await store.update(op.id, { deletedAt: at }, null)
-            else if (op.kind === 'delete') await store.update(op.id, { deletedAt: null }, null)
-            else await store.update(op.id, op.before, null)
+            current.set(op.id, await store.update(op.id, changes, null))
+            reverted.push(op.id)
           } catch (error) {
             if (!(error instanceof StoreError)) throw error
-            failed.push(op.id)
+            if (error.code === ROW_NOT_FOUND) gone.push(op.id)
+            else failed.push(op.id)
           }
         }
+
+        const result = { batch_id, reverted: reverted.length, skipped, gone, failed }
+        if (failed.length > 0) {
+          return fail(
+            `Undo incomplete: ${plural(failed.length, 'change')} could not be reverted right now. Call undo_batch again (it is safe to repeat).`,
+            result,
+          )
+        }
+        if (skipped.length > 0) {
+          return ok(
+            `Reverted ${plural(reverted.length, 'change')} of "${batch.summary}". ${plural(skipped.length, 'task')} changed since and ${skipped.length === 1 ? 'was' : 'were'} kept: call undo_batch again with force: true to revert ${skipped.length === 1 ? 'it' : 'them'} too.`,
+            result,
+          )
+        }
         await store.markUndone(batch_id, at)
-        const done = batch.ops.length - failed.length
         return ok(
-          `Undid "${batch.summary}": ${plural(done, 'change')} reverted${failed.length ? `, ${failed.length} could not be (task gone)` : ''}.`,
-          { batch_id, reverted: done, failed },
+          `Undid "${batch.summary}": ${plural(reverted.length, 'change')} reverted${gone.length ? `, ${gone.length} already gone` : ''}.`,
+          result,
         )
       }),
+  )
+}
+
+const FIELDS = [
+  'title',
+  'notes',
+  'icon',
+  'color',
+  'subtasks',
+  'date',
+  'startTime',
+  'durationMin',
+  'isAllDay',
+  'completedAt',
+] as const
+type Field = (typeof FIELDS)[number]
+
+/** The fields a change touches (deletion is tracked separately). */
+function changedKeys(changes: TaskChanges): Field[] {
+  return FIELDS.filter((k) => changes[k] !== undefined)
+}
+
+/** The given fields of a task or a change, as a change. */
+function pick(source: Task | TaskChanges, keys: readonly Field[]): TaskChanges {
+  const out: Record<string, unknown> = {}
+  for (const k of keys) out[k] = (source as Record<Field, unknown>)[k]
+  return out
+}
+
+/** True when the task still has exactly these values (subtasks compared by content). */
+function sameValues(task: Task, expected: TaskChanges): boolean {
+  return FIELDS.every(
+    (k) => expected[k] === undefined || JSON.stringify(task[k]) === JSON.stringify(expected[k]),
   )
 }

@@ -121,6 +121,21 @@ export class MemoryStore implements TaskStore {
     )
   }
 
+  listDates(dates: readonly ISODate[]): Promise<Task[]> {
+    const wanted = new Set(dates)
+    return Promise.resolve(
+      this.live()
+        .filter((r) => r.date !== null && wanted.has(r.date))
+        .map((r) => MemoryStore.task(r)),
+    )
+  }
+
+  async updateMany(ids: readonly string[], changes: TaskChanges, batchId: string): Promise<Task[]> {
+    const out: Task[] = []
+    for (const id of ids) out.push(await this.update(id, changes, batchId))
+    return out
+  }
+
   getMany(ids: readonly string[], includeDeleted = false): Promise<Task[]> {
     return Promise.resolve(
       ids

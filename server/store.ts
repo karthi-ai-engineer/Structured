@@ -53,10 +53,17 @@ export interface TaskChanges {
   deletedAt?: string | null
 }
 
+/**
+ * One operation of a batch, as needed to undo it.
+ * - `after`: the values Claude wrote. Undo skips an op whose current values differ, because the
+ *   user changed the task since (unless forced).
+ * - `subtasks_added`: undo removes only these subtask ids, keeping the user's own changes.
+ */
 export type BatchOp =
-  | { kind: 'create'; id: string }
-  | { kind: 'update'; id: string; before: TaskChanges }
+  | { kind: 'create'; id: string; after?: TaskChanges }
+  | { kind: 'update'; id: string; before: TaskChanges; after?: TaskChanges }
   | { kind: 'delete'; id: string }
+  | { kind: 'subtasks_added'; id: string; subtaskIds: string[] }
 
 export interface Batch {
   id: string
@@ -81,14 +88,21 @@ export interface TaskStore {
   /** Open tasks dated from `since` up to the day before `before`. */
   listOpenBefore(before: ISODate, since: ISODate): Promise<Task[]>
   search(query: string, options: SearchOptions): Promise<Task[]>
+  /** Live tasks on exactly these dates (for warnings). */
+  listDates(dates: readonly ISODate[]): Promise<Task[]>
   /** Tasks by id; soft-deleted ones only when asked (undo needs them). */
   getMany(ids: readonly string[], includeDeleted?: boolean): Promise<Task[]>
   insertMany(tasks: readonly NewTask[], batchId: string): Promise<Task[]>
   update(id: string, changes: TaskChanges, batchId: string | null): Promise<Task>
+  /** The same change on many rows in one statement (all or nothing). */
+  updateMany(ids: readonly string[], changes: TaskChanges, batchId: string): Promise<Task[]>
   saveBatch(batch: Omit<Batch, 'undoneAt' | 'createdAt'>): Promise<void>
   getBatch(id: string): Promise<Batch | null>
   markUndone(id: string, at: string): Promise<void>
 }
+
+/** PostgREST's code when `.single()` finds no row (the task no longer exists). */
+export const ROW_NOT_FOUND = 'pg-PGRST116'
 
 export class StoreError extends Error {
   readonly code: string
@@ -126,10 +140,15 @@ function toUpdate(changes: TaskChanges, batchId: string | null): TablesUpdate<'t
   return u
 }
 
-/** PostgREST `or` filter values must not contain its syntax characters; LIKE wildcards are
- *  escaped so the query matches literally. */
-export function searchPattern(query: string): string {
-  const clean = query.replace(/[,()"]/g, ' ').trim()
+/** The `ilike` pattern for a search, or null when nothing searchable is left. PostgREST `or`
+ *  syntax characters are removed, `*` (PostgREST's wildcard) too, and LIKE wildcards are
+ *  escaped, so the query always matches literally. */
+export function searchPattern(query: string): string | null {
+  const clean = query
+    .replace(/[,()"*]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (clean === '') return null
   return `%${clean.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
 }
 
@@ -185,6 +204,7 @@ export function createSupabaseStore(db: AdminDb): TaskStore {
 
     async search(query, options) {
       const pattern = searchPattern(query)
+      if (pattern === null) return []
       let q = live().or(`title.ilike.${pattern},notes.ilike.${pattern}`)
       if (options.from) q = q.gte('date', options.from)
       if (options.to) q = q.lte('date', options.to)
@@ -192,6 +212,13 @@ export function createSupabaseStore(db: AdminDb): TaskStore {
       const { data, error, status } = await q
         .order('date', { ascending: false, nullsFirst: true })
         .limit(options.limit)
+      if (error) fail(error, status)
+      return data.map(taskFromRow)
+    },
+
+    async listDates(dates) {
+      if (dates.length === 0) return []
+      const { data, error, status } = await live().in('date', [...new Set(dates)])
       if (error) fail(error, status)
       return data.map(taskFromRow)
     },
@@ -233,6 +260,17 @@ export function createSupabaseStore(db: AdminDb): TaskStore {
         .single()
       if (error) fail(error, status)
       return taskFromRow(data)
+    },
+
+    async updateMany(ids, changes, batchId) {
+      if (ids.length === 0) return []
+      const { data, error, status } = await db
+        .from('tasks')
+        .update(toUpdate(changes, batchId))
+        .in('id', [...ids])
+        .select('*')
+      if (error) fail(error, status)
+      return data.map(taskFromRow)
     },
 
     async saveBatch(batch) {
