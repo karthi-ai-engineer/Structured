@@ -15,6 +15,15 @@ import { Fab } from '@/features/shell/Fab'
 import { QueryState } from '@/features/shell/QueryState'
 import { cn } from '@/lib/utils'
 
+// The week strip shows up to 6 days around the selected one, and the arrows move a week, so
+// keep navigation where every one of those dates is inside dates.ts's supported range.
+const FIRST_DAY = '1900-01-08'
+const LAST_DAY = '2999-12-24'
+
+function isNavigableDate(date: string): boolean {
+  return isISODate(date) && date >= FIRST_DAY && date <= LAST_DAY
+}
+
 function isTyping(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
@@ -28,12 +37,14 @@ export function DayView() {
   const params = useParams()
   const navigate = useNavigate()
   const selected: ISODate =
-    params.date !== undefined && isISODate(params.date) ? params.date : today
+    params.date !== undefined && isNavigableDate(params.date) ? params.date : today
   const query = useDayTasks(selected)
   const actions = useTaskActions()
   const editor = useEditor()
 
-  const goTo = (date: ISODate) => void navigate(date === today ? '/' : `/day/${date}`)
+  const goTo = (date: ISODate) => {
+    if (isNavigableDate(date)) void navigate(date === today ? '/' : `/day/${date}`)
+  }
   const openNew = () =>
     editor.openCreate({
       date: selected,
