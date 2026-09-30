@@ -2,10 +2,10 @@ import { useSyncExternalStore } from 'react'
 import { X } from 'lucide-react'
 import { dismiss, getNotices, subscribe } from '@/stores/notices'
 
-/** Short error messages, bottom center, above the mobile tab bar. */
+/** Short error messages, bottom center, above the mobile tab bar. The live region is always
+ *  mounted, so screen readers announce the first message too. */
 export function Notices() {
   const notices = useSyncExternalStore(subscribe, getNotices, getNotices)
-  if (notices.length === 0) return null
   return (
     <div
       role="status"
