@@ -58,6 +58,8 @@ From Phase 1, every phase runs as a GitHub-native team process, described in **`
 - release-prep PR (CHANGELOG, HANDOFF), then the release PR to `main` gated by `gate/final-verification`
 - merge, `production` deployment, tag, and GitHub Release with generated notes; milestone and epic closed
 
+The pipeline runs the **balanced profile** (`TEAM_WORKFLOW.md` §7): 2 design-review rounds; 1 or 2 edge-case lenses and QA round 2 only on large phases; concise documents; a faster model only for mechanical steps. The per-phase values live in each `pipeline-args.json`.
+
 Gates are shown with labels (`gate:*`, `status:*`) and commit statuses (`gate/design-review`, `gate/code-review`, `gate/final-verification`). One account plays every role, so reviews are comment reviews that start with `Verdict: APPROVED` or `Verdict: CHANGES REQUESTED`.
 
 ## Running a phase (multi-agent pipeline)

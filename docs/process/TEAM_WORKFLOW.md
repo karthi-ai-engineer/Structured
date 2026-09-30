@@ -115,3 +115,24 @@ Delivered as the PR `chore: team workflow infrastructure` into `main`:
 - `environment: production` in `deploy.yml`
 - the rulesets from §2
 - a "Structured Roadmap" GitHub Project board (needs `gh auth refresh -s project`; skipped with a note if the scope is missing)
+
+## 7. Process profile: balanced (chosen 2026-09-30)
+Everything visible on GitHub stays the same: design PR and review, an issue, PR and code review per work package, bug issues with one fix PR each, the gated release PR, and the release. The balanced profile only removes internal overhead:
+
+| Setting (`pipeline-args.json`) | Value | Why |
+|---|---|---|
+| `maxReviewRounds` | 2 | Most design issues surface in round 1 |
+| `maxCodeReviewLoops` | 2 | Same reasoning, per work-package PR |
+| `edgeLenses` | 2 for large phases, 1 (combined) for medium and small phases | Halves research time where the surface is small |
+| `qa2` | `true` for large phases, `false` otherwise (QA round 1 then also runs the adversarial checks) | The second round pays off only on big surfaces |
+| `fastModel` | `sonnet` for purely mechanical steps (preflight, reloading the design) | Design, code, review and testing keep the strongest model |
+| Document size | ~30 KB per doc, linking to `PLAN.md` instead of restating it | Phase 0's 100 KB draft plan cost a lot of time |
+
+| Phase | Size | `edgeLenses` | `qa2` |
+|---|---|---|---|
+| 1 Web MVP | L | 2 | true |
+| 2 MCP server | M | 1 | false |
+| 3 Structured parity | L | 2 | true |
+| 4 Android APK | M | 1 | false |
+| 5 Work tracking | M | 1 | false |
+| 6 Extras | S | 1 | false |

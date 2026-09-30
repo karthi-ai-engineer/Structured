@@ -22,9 +22,15 @@ export const meta = {
 // Setup always runs first and is idempotent (reuses what already exists).
 const A = args || {}
 const DIR = 'docs/phases/' + A.phaseId
-const MAX_REVIEW = A.maxReviewRounds || 3
+const MAX_REVIEW = A.maxReviewRounds || 2
 const MAX_CODE_REVIEW = A.maxCodeReviewLoops || 2
 const MAX_FIX = A.maxFixLoops || 3
+// Balanced profile (docs/process/TEAM_WORKFLOW.md section 7): edgeLenses 1 or 2, qa2 on/off,
+// a faster model for purely mechanical steps, and concise documents.
+const EDGE_LENSES = A.edgeLenses === 1 ? 1 : 2
+const RUN_QA2 = A.qa2 !== false
+const FAST = A.fastModel || 'sonnet'
+const CONCISE = 'Keep documents concise and decision-focused (aim for roughly 30 KB or less per file): link to the master PLAN.md instead of restating it; prefer tables and lists over prose.'
 const STAGES = ['design', 'edge', 'replan', 'review', 'build', 'qa1', 'qa2', 'release', 'ship']
 const START = STAGES.indexOf(A.resumeFrom || 'design')
 if (START < 0) return { status: 'failed', reason: 'unknown resumeFrom: ' + A.resumeFrom }
@@ -133,29 +139,33 @@ if (runs('design')) {
 ${ctx()}
 1. Create branch design/${A.phaseId} from ${A.branch} (or reuse it) and check it out.
 2. Read PLAN.md (relevant sections), docs/process/TEAM_WORKFLOW.md and the current code. Research current versions, install commands, configs and APIs for everything this phase touches.
-3. Write ${DIR}/plan-v1.md: goal; resulting file tree; exact commands; key code designs (types, signatures, data flow); ordered WORK PACKAGES (each one PR-sized, independently verifiable, each with a verification step and the area:* labels it touches); numbered, objectively testable ACCEPTANCE CRITERIA; test plan; risks.
+3. Write ${DIR}/plan-v1.md: goal; resulting file tree; exact commands; key code designs (types, signatures, data flow); ordered WORK PACKAGES (each one PR-sized, independently verifiable, each with a verification step and the area:* labels it touches); numbered, objectively testable ACCEPTANCE CRITERIA; test plan; risks. ${CONCISE}
 4. Commit ("docs(${A.phaseId}): draft design") and push the design branch.
 Return the structured summary.`, { phase: 'Design', label: 'tech lead: draft', schema: PLAN_SCHEMA })
   if (!v1) return { status: 'failed', stage: 'design' }
 }
 
-const LENSES = [
-  { key: 'functional', title: 'Functional, data and UX edge cases', focus: 'time and timezones (DST, midnight, week boundaries), empty / huge / malformed data, invalid input, concurrency between devices, realtime ordering and duplicates, slow or offline network, idempotency and retries, errors and what the user sees, mobile vs desktop, accessibility, dependencies of later phases' },
-  { key: 'platform', title: 'Platform, tooling, infrastructure and integration edge cases', focus: 'Windows paths and line endings, Node version, dependency conflicts, build and config pitfalls, Supabase CLI and cloud quirks, Vercel build / env / routing / functions, GitHub Actions and rulesets, secret leakage in a public repo, free-tier limits, reproducibility on a fresh machine' },
-]
+const FOCUS_FUNCTIONAL = 'time and timezones (DST, midnight, week boundaries), empty / huge / malformed data, invalid input, concurrency between devices, realtime ordering and duplicates, slow or offline network, idempotency and retries, errors and what the user sees, mobile vs desktop, accessibility, dependencies of later phases'
+const FOCUS_PLATFORM = 'Windows paths and line endings, Node version, dependency conflicts, build and config pitfalls, Supabase CLI and cloud quirks, Vercel build / env / routing / functions, GitHub Actions and rulesets, secret leakage in a public repo, free-tier limits, reproducibility on a fresh machine'
+const LENSES = EDGE_LENSES === 1
+  ? [{ key: 'combined', prefix: 'E', title: 'Functional, platform and integration edge cases', focus: FOCUS_FUNCTIONAL + '; and also ' + FOCUS_PLATFORM }]
+  : [
+      { key: 'functional', prefix: 'F', title: 'Functional, data and UX edge cases', focus: FOCUS_FUNCTIONAL },
+      { key: 'platform', prefix: 'P', title: 'Platform, tooling, infrastructure and integration edge cases', focus: FOCUS_PLATFORM },
+    ]
 let edge = LENSES.map(l => ({ file: DIR + '/edge-cases-' + l.key + '.md', edge_cases: [] }))
 if (runs('edge')) {
   phase('Design')
   edge = (await parallel(LENSES.map(l => () => agent(`You are a senior engineer who specialises in finding edge cases before they become bugs. Lens: ${l.title}. Focus: ${l.focus}.
 ${ctx()}
-Work on branch design/${A.phaseId} (check it out; pull first). Read ${DIR}/plan-v1.md and the relevant PLAN.md sections. Research known issues for the exact tools and versions in the plan. Find every concrete edge case, failure mode and gap through your lens (real scenario + concrete recommendation each), ids prefixed ${l.key === 'functional' ? 'F' : 'P'}.
-Write ${DIR}/edge-cases-${l.key}.md. Do NOT commit (the other researcher works in parallel on the same checkout); the tech lead commits both files. Return them.`, { phase: 'Design', label: 'edge cases: ' + l.key, schema: EDGE_SCHEMA })))).filter(Boolean)
+Work on branch design/${A.phaseId} (check it out; pull first). Read ${DIR}/plan-v1.md and the relevant PLAN.md sections. Research known issues for the exact tools and versions in the plan. Find every concrete edge case, failure mode and gap through your lens (real scenario + concrete recommendation each), ids prefixed ${l.prefix}. Prioritise: critical and major items first; skip generic advice. ${CONCISE}
+Write ${DIR}/edge-cases-${l.key}.md. Do NOT commit (another researcher may work in parallel on the same checkout); the tech lead commits the files. Return them.`, { phase: 'Design', label: 'edge cases: ' + l.key, schema: EDGE_SCHEMA })))).filter(Boolean)
 }
 
 let plan = null
 if (runs('replan')) {
   phase('Design')
-  plan = await agent(`You are the tech lead. Two edge-case researchers reviewed ${DIR}/plan-v1.md: ${edge.map(e => e.file).join(', ')}.
+  plan = await agent(`You are the tech lead. Edge-case research on ${DIR}/plan-v1.md is in: ${edge.map(e => e.file).join(', ')}. ${CONCISE}
 ${ctx()}
 On branch design/${A.phaseId}:
 1. Write the FINAL design to ${DIR}/PLAN.md: complete and self-contained, every valid edge case integrated, an "Edge-case coverage" table (every id -> handled where / rejected / deferred, with reason), ordered work packages with verification steps and area labels, numbered testable acceptance criteria.
@@ -165,7 +175,7 @@ On branch design/${A.phaseId}:
 5. Edit epic #${EPIC}: fill its "Work packages" section with a checklist of the work packages.
 Return the structured summary including pr_number.`, { phase: 'Design', label: 'tech lead: final design + PR', schema: PLAN_SCHEMA })
 } else {
-  plan = await agent(`Read ${DIR}/PLAN.md on branch ${runs('review') ? 'design/' + A.phaseId : A.branch} in ${A.root} (fetch first). Change nothing. Return its summary, path, the open design PR number if any (gh pr list --head design/${A.phaseId}), and its work packages and numbered acceptance criteria EXACTLY as written (same ids, titles, order).`, { phase: 'Design', label: 'load design', schema: PLAN_SCHEMA })
+  plan = await agent(`Read ${DIR}/PLAN.md on branch ${runs('review') ? 'design/' + A.phaseId : A.branch} in ${A.root} (fetch first). Change nothing. Return its summary, path, the open design PR number if any (gh pr list --head design/${A.phaseId}), and its work packages and numbered acceptance criteria EXACTLY as written (same ids, titles, order).`, { phase: 'Design', label: 'load design', schema: PLAN_SCHEMA, model: FAST })
 }
 if (!plan) return { status: 'failed', stage: 'replan' }
 
@@ -206,7 +216,7 @@ if (A.preflightChecks) {
 ${ctx()}
 Run from the project root and report each:
 ${A.preflightChecks}
-Return ready=true only if every check passes.`, { phase: 'Preflight', label: 'preflight', schema: PREFLIGHT_SCHEMA })
+Return ready=true only if every check passes.`, { phase: 'Preflight', label: 'preflight', schema: PREFLIGHT_SCHEMA, model: FAST })
   if (!pre || !pre.ready) return { status: 'blocked_on_credentials', preflight: pre, epic: EPIC }
 }
 
@@ -296,10 +306,12 @@ pass=true only if all acceptance criteria hold and no open critical/major bugs r
   return reports
 }
 
+const ADVERSARIAL_EXTRA = RUN_QA2 ? '' : ` There is NO second QA round in this phase, so also cover the adversarial checks: exercise the edge cases the coverage table claims are handled, review the phase diff (git log main..${A.branch}) for bugs, secret leaks and architecture violations, reinstall from clean (npm ci) and rebuild, and check the public repo and CI logs for leaked URLs or secrets.`
 if (runs('qa1')) phase('QA round 1')
-const q1 = !runs('qa1') ? [] : await qaRound(1, 'QA round 1', `You are a meticulous QA engineer (round 1) verifying ${A.phaseName} end to end.`)
-if (runs('qa2')) phase('QA round 2')
-const q2 = !runs('qa2') ? [] : await qaRound(2, 'QA round 2', `You are an independent senior QA engineer (round 2, adversarial) for ${A.phaseName}. Assume round 1 missed things; your goal is to BREAK it: exercise every edge case the coverage table claims is handled, review the phase diff (git log main..${A.branch}) for bugs, secret leaks and architecture violations, reinstall from clean (npm ci) and rebuild, check Windows path/line-ending issues, check the public repo and CI logs for leaked URLs or secrets, and check that issues/PRs/HANDOFF.md are consistent. Read ${DIR}/test-report-1*.md first.`)
+const q1 = !runs('qa1') ? [] : await qaRound(1, 'QA round 1', `You are a meticulous QA engineer (round 1) verifying ${A.phaseName} end to end.${ADVERSARIAL_EXTRA}`)
+if (runs('qa2') && RUN_QA2) phase('QA round 2')
+if (!RUN_QA2 && runs('qa2')) log('QA round 2 skipped for this phase (balanced profile: qa2=false); round 1 covered the adversarial checks')
+const q2 = !runs('qa2') || !RUN_QA2 ? [] : await qaRound(2, 'QA round 2', `You are an independent senior QA engineer (round 2, adversarial) for ${A.phaseName}. Assume round 1 missed things; your goal is to BREAK it: exercise every edge case the coverage table claims is handled, review the phase diff (git log main..${A.branch}) for bugs, secret leaks and architecture violations, reinstall from clean (npm ci) and rebuild, check Windows path/line-ending issues, check the public repo and CI logs for leaked URLs or secrets, and check that issues/PRs/HANDOFF.md are consistent. Read ${DIR}/test-report-1*.md first.`)
 
 // ───────────────────────── 7. RELEASE ─────────────────────────
 const finals = []
