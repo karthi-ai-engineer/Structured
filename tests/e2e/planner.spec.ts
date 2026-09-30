@@ -118,6 +118,55 @@ test.describe('planner', () => {
     await expect(page.getByText(title)).toHaveCount(0)
   })
 
+  test('editor edge cases from code review', async ({ page }) => {
+    const title = `__test__ Edge ${uid()}`
+    await page.goto('/day/2026-10-05')
+    await openNewTask(page)
+    const d = page.getByRole('dialog')
+    await d.getByLabel('Title').fill(title)
+
+    // Clearing the date field mid-edit keeps the task scheduled on its date.
+    await d.getByLabel('Date').fill('')
+    await expect(d.getByRole('switch', { name: 'Scheduled' })).toBeChecked()
+    await expect(d.getByLabel('Date')).toHaveValue('2026-10-05')
+
+    // A cleared start time blocks saving: no timed task without a time.
+    await d.getByLabel('Start').fill('')
+    await expect(d.getByText('Pick a start time or turn on All day')).toBeVisible()
+    await expect(d.getByRole('button', { name: 'Add task' })).toBeDisabled()
+    await d.getByLabel('Start').fill('10:00')
+
+    // An emptied custom duration blocks saving instead of becoming 0 minutes.
+    await d.getByLabel('Custom duration in minutes').fill('')
+    await expect(d.getByRole('button', { name: 'Add task' })).toBeDisabled()
+    await d.getByLabel('Custom duration in minutes').fill('50')
+    const created = saved(page, title)
+    await d.getByRole('button', { name: 'Add task' }).click()
+    await created
+    await expect(page.getByRole('listitem').filter({ hasText: title })).toContainText(
+      '10:00 – 10:50 (50m)',
+    )
+
+    // Completed, then unscheduled: it reopens in the inbox instead of vanishing.
+    const done = saved(page, 'completed_at')
+    await page.getByRole('checkbox', { name: `Mark done: ${title}` }).click()
+    await done
+    await page.getByRole('button', { name: `Open ${title}` }).click()
+    await page.getByRole('dialog').getByRole('switch', { name: 'Scheduled' }).click()
+    const moved = saved(page, 'date')
+    await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click()
+    await moved
+    await page.goto('/inbox')
+    const inbox = page.getByRole('list', { name: 'Inbox' })
+    await expect(inbox.getByText(title)).toBeVisible()
+
+    // The row's title button comes before its 'Schedule for today' and check buttons.
+    await inbox.getByRole('button', { name: title }).first().click()
+    const gone = saved(page, 'deleted_at')
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click()
+    await gone
+  })
+
   test('week strip and keyboard navigation', async ({ page }) => {
     await page.goto('/day/2026-10-01')
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('October 2026')
@@ -173,5 +222,43 @@ test.describe('planner', () => {
     await page.goto('/settings')
     await page.getByRole('radio', { name: '24h' }).click()
     await expect(page.getByRole('radio', { name: '24h' })).toHaveAttribute('aria-checked', 'true')
+
+    // Option groups work with the arrow keys (one tab stop, roving focus).
+    await page.getByRole('radio', { name: '24h' }).focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(page.getByRole('radio', { name: '12h' })).toBeFocused()
+    await expect(page.getByRole('radio', { name: '12h' })).toHaveAttribute('aria-checked', 'true')
+    await page.keyboard.press('ArrowLeft')
+    await expect(page.getByRole('radio', { name: '24h' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  test('settings: day hours save once, on blur', async ({ page }) => {
+    await page.goto('/settings')
+    const start = page.getByLabel('Day starts')
+    const original = await start.inputValue()
+    const writes: string[] = []
+    page.on('request', (r) => {
+      if (r.url().includes('/rest/v1/settings') && r.method() === 'PATCH')
+        writes.push(r.postData() ?? '')
+    })
+
+    await start.fill('06:45')
+    expect(writes).toHaveLength(0) // nothing saved while typing
+    const savedStart = page.waitForResponse(
+      (r) => r.url().includes('/rest/v1/settings') && r.request().method() === 'PATCH',
+    )
+    await start.press('Enter')
+    await savedStart
+    expect(writes).toHaveLength(1)
+    await reloadLoaded(page)
+    await expect(page.getByLabel('Day starts')).toHaveValue('06:45')
+
+    // Restore the owner's value.
+    const restored = page.waitForResponse(
+      (r) => r.url().includes('/rest/v1/settings') && r.request().method() === 'PATCH',
+    )
+    await page.getByLabel('Day starts').fill(original)
+    await page.getByLabel('Day starts').press('Enter')
+    await restored
   })
 })
