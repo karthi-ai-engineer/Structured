@@ -41,7 +41,8 @@ export function findFreeSlots(
   window: Interval,
   minMinutes: number,
 ): FreeSlot[] {
-  const sorted = [...busy].sort((a, b) => a.start - b.start)
+  // Zero-length tasks (reminders) take no time, so they never split a free slot.
+  const sorted = busy.filter((i) => i.end > i.start).sort((a, b) => a.start - b.start)
   const slots: FreeSlot[] = []
   let cursor = window.start
   const push = (start: number, end: number) => {
