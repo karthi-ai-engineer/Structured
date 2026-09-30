@@ -1,92 +1,190 @@
 # HANDOFF
 
-> Read this first when resuming on any device. It is updated at the end of every work package, every phase, and before every machine switch.
+> Read this first when resuming on any device. It is updated at the end of every work package, every fix round, every phase, and before every machine switch. Values (keys, URLs, the Vercel project name, the Supabase ref) are never written here: see `.env.local`.
 
 ## Current status
-- **Phase:** 0 (Foundation), implementation in progress
+- **Phase:** 0 (Foundation), implementation stage
 - **Branch:** `phase-0-foundation`
-- **Last updated:** 2026-09-30 13:25 UTC+9
-- **Pipeline stage reached:** stage 7 (implement). Stages 1 to 6 are done:
+- **Last updated:** 2026-09-30 13:35 UTC+9
+- **Pipeline stage reached:** stage 7 (implement), WP9 in progress. Stages 1 to 6 are done:
   - plan, edge-case research, replan and design review: `docs/phases/phase-0/PLAN.md` (approved in `review-r2.md`)
   - tracking issue **#1** ("Phase 0: Foundation", labels `phase`, `phase-0`)
-- **Work packages:**
-  - **WP1 done** (scaffold and repo hygiene): Vite 8 + React 19 + TypeScript 6.0 strict app in the repo root, `@/` alias (TS and Vite), `.gitattributes` (LF), `.editorconfig`, `.nvmrc` 24, `engines.node` 24.x, privacy metas, strict dev/preview ports, favicon and `robots.txt`. Details: `docs/phases/phase-0/DEVLOG.md`.
-  - **WP2 done** (styling, lint and architecture rules): Tailwind CSS v4 (`@tailwindcss/vite`, entry `src/styles/index.css`), shadcn/ui 4.21.0 (`radix-nova`, `cn`, `Button` rendered as a disabled "Check again" placeholder), type-aware ESLint with the boundary and clock rules (six negative probes verified), Prettier (`format`, `format:check`), README-only placeholders in `src/features`, `src/stores`, `src/data/queries`, `server` and `api`, and `CLAUDE.md` part 1 (architecture, import rules, code and data conventions, migrations checklist, Windows rules, session-start ritual). Details: `docs/phases/phase-0/DEVLOG.md`.
-  - **WP3 done** (tests, CI and repo checks): Vitest 5 (hermetic: `TZ=America/St_Johns` set in `vitest.config.ts`, blanked `VITE_*`, a rejecting `fetch` stub), the `.env` tool `scripts/lib/env-file.mjs` (`env:check`), the repo checks `check:hygiene`, `check:leaks`, `check:commits` and `check:core` (`npm run check`), and `npm run verify` as the full local gate. `.github/workflows/ci.yml` runs the **`ci-verify`** job on every push and PR (Node 24 from `.nvmrc`, npm cache); it is green on the push and the PR. Also `.github/dependabot.yml`, the PR template and issue forms, and the labels `dependencies` and `ci`. Details: `docs/phases/phase-0/DEVLOG.md`.
-  - **WP4 done** (time-zone core): `src/core/dates.ts` has the full PLAN §6.1 API. It uses `date-fns` 4.4 and `@date-fns/tz` 1.5; zone offsets are computed exactly from Intl wall-clock parts, because `tzOffset()` gets historical sub-hour negative offsets wrong. It has 320 table-driven tests (API signatures, zones including Kolkata, New York, Chatham, London, Santiago, Lord Howe and historical DST, times, calendar, formatting) and the coverage thresholds 95/95/100/90 in `vitest.config.ts` (actual: 99.45 % statements, 99.13 % branches, 100 % functions). `check:core` prints `ok src/core/dates.ts`, and CI is green on Node 24. The deviations (exact offsets, true start of day, `msUntilNextDayIn` across a repeated midnight) are in `docs/phases/phase-0/DEVLOG.md`.
-  - **WP5 done** (Supabase): the cloud project `structured` (ap-south-1, organization "Karthi labs") was created by the idempotent `npm run db:setup` (`scripts/setup-supabase.mjs`: every CLI call uses `--agent no` with stdin ignored, JSON shapes are normalised, `projects create` runs once with a re-list fallback). `supabase/migrations/0001_init.sql` (full schema, grants, `open_access` RLS, triggers, realtime, `notify pgrst`) is pushed: `npm run db:migrations` shows `0001` locally and remotely, and a dry-run push says the remote is up to date. `src/data/database.types.ts` is generated (`npm run db:types`, no drift). Opt-in `npm run test:integration` passes 7/7 with 0 skipped. `.env.local` has the 6 keys (`PROD_URL` comes in WP7), and `.env.example` documents all 7. Details and deviations: `docs/phases/phase-0/DEVLOG.md`.
-  - **WP6 done** (the "DB connected" home page):
-    - `src/data`: `env.ts` validates the browser variables without ever echoing a value. `supabase.ts` is the typed client (`null` when unconfigured). `repo/settings.ts` makes every query with `.retry(false)` and the caller's abort signal. `health.ts` has `checkDatabase` (one shared 12 s deadline for read, insert and re-read; typed error codes) and `singleflight`. `dbCheck.ts` is `startDbCheck`.
-    - `src/platform`: time zone and online adapters.
-    - UI: `DbStatusBadge` (fixed copy per code, `role="status"`, no URLs), `RootErrorBoundary`, and `App` (React 19 `use()` under `Suspense`; "Check again" runs as a transition; no `useEffect`).
-    - `vite.config.ts` refuses a production build (`REQUIRE_SUPABASE_ENV=1` or `VERCEL_ENV=production`) with an invalid env, naming only the variable. It stamps `<meta name="build-sha">` (`dev` unless `VITE_BUILD_SHA` is a SHA).
-    - Manual checks: M1 ("DB connected") passed in Chrome. M2 passed: the first load created the **settings row with `timezone=Asia/Tokyo`** (the browser's zone), and a reload showed "found". M3 passed: an unconfigured build shows "Database not configured" with no console errors.
-    - 705 unit tests; CI green.
-    - Details and deviations are in `docs/phases/phase-0/DEVLOG.md`. Among them: the ESLint server-import rule now allows `react-dom/server`.
-  - **WP7 done** (Vercel and the first production deploy):
-    - The Vercel project was created once in the "Karthi Labs" team, with the secret name from `.env.local` (`VERCEL_PROJECT_NAME`), and linked (`.vercel/project.json`, gitignored). Settings: Git integration **off** (no Git link; `vercel.json` has `git.deploymentEnabled: false`), framework Vite, Node.js 24.x, **Standard Protection** (`prod_deployment_urls_and_all_previews`: the production domain is public, generated deployment URLs need a Vercel login).
-    - `vercel.json` (SPA rewrite that never touches `/api` or `/assets/`, privacy headers, region `bom1`) and `.vercelignore`.
-    - `npm run env:sync-vercel` (`scripts/sync-vercel-env.mjs`): the env matrix of PLAN §5.11 is in sync. All 7 app keys are in the Vercel **development** env (so `vercel env pull` restores `.env.local`), `VITE_*` are Config in production and preview, and the secret key is Secret in production.
-    - `scripts/ci/deploy-prod.sh` (pull, build with the env guard, exact-value bundle check, prebuilt deploy, smoke) is the one deploy path, for `.github/workflows/deploy.yml` and for local runs. `scripts/ci/smoke.mjs` checks the build SHA, routes, headers and a live DB probe without printing URLs.
-    - Production is deployed (commit `9c23319`) and passed the smoke check and the protection probe. In the owner's Chrome it shows **"DB connected"**. `PROD_URL` is in `.env.local` and the Vercel development env.
-    - GitHub secrets `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL` are set (with `VERCEL_TOKEN`, 4 in total). The clean-clone rehearsal proved a tokenless `vercel build`, so `deploy.yml` should work at Ship.
-    - 796 unit tests; CI green. Details and deviations: `docs/phases/phase-0/DEVLOG.md`.
-  - **WP8 done** (GitHub repo settings):
-    - **Ruleset 24225914** ("main protection", active, on `~DEFAULT_BRANCH`, no bypass actors) is applied from the committed `.github/rulesets/main.json` with the idempotent GET-then-PUT/POST snippet (PLAN §9.5); a second run took the PUT path and kept one ruleset. `main` now requires a PR (0 approvals, merge commits only) and the `ci-verify` check (GitHub Actions, integration 15368, strict off), and blocks force-pushes and deletion. The phase branch has no rules. PR #2 is still `CLEAN`/`MERGEABLE`.
-    - **CodeQL default setup** is `configured` with language auto-detection, but has no languages yet: `main` holds only Markdown, so the request naming `javascript-typescript` and `actions` was refused with HTTP 422 ("One or more languages you selected are not present in the repository"). Follow-up at Ship: see "Next".
-    - **Description and all 12 topics** are set.
-    - Details and deviations (including GitHub's default `require_extra_approval_for_unattributed_changes`, which has no effect with 0 approvals): `docs/phases/phase-0/DEVLOG.md`.
-  - WP9: not started.
 - **Resume with:** `resumeFrom: "implement"`, `skipWPs: ["WP1", "WP2", "WP3", "WP4", "WP5", "WP6", "WP7", "WP8"]`
-- **IDs:** tracking issue #1, draft PR #2 (`phase-0-foundation` → `main`, `Closes #1`), ruleset **24225914** ("main protection"; re-apply only with the PLAN §9.5 snippet, never a second POST).
-- **Pipeline for Phase 0:** `.claude/workflows/phase-pipeline.js`, with args in `docs/phases/phase-0/pipeline-args.json`
-- **Cloud resources created so far:**
-  - Supabase project `structured` in ap-south-1, organization "Karthi labs" (it uses the second and last free slot). Its URL, ref, keys and database password are in `.env.local` and in the Vercel development env (never in the repo).
-  - Vercel project (secret name: see `.env.local`) in the "Karthi Labs" team, deployed to production from this machine with `scripts/ci/deploy-prod.sh`. The production URL is `PROD_URL` in `.env.local` (never in the repo).
-- **Already set up:** GitHub repo; repo secrets `VERCEL_TOKEN` (Vercel scope "Karthi Labs"), `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL`; the `main` ruleset 24225914; CodeQL default setup (configured, auto-detect); the repo description and 12 topics; Supabase org "Karthi labs".
-- **Next:** WP9 (CLAUDE.md part 2, README, final HANDOFF, the resume rehearsal and the final sweep), then the QA rounds, final verification and Ship.
-  - **Post-merge follow-up for Ship (PLAN §17.1 step 8): CodeQL languages.** Right after the merge, run `gh api repos/karthi-ai-engineer/Structured/code-scanning/default-setup --jq '.state, .languages'`. It must show `configured` with `javascript-typescript` and `actions` (default setup adds languages by itself once `main` has code). If a language is missing, run the PLAN §9.5 request again: `printf '{"state":"configured","query_suite":"default","languages":["javascript-typescript","actions"]}' | gh api -X PATCH repos/karthi-ai-engineer/Structured/code-scanning/default-setup --input -`. The same follow-up is in the PR #2 body under "Post-merge follow-ups".
-  - **The Ship merge must use `gh pr merge 2 --merge`** (the ruleset allows merge commits only) and needs a green `ci-verify` on the PR head.
-  - **Open item from WP7 (for QA or the owner):** repeat M2 against production (AC 24 bullet 2). Delete the `settings` row with a one-off secret-key command, then load production in the owner's Chrome: the first load must show `Settings row created`, and a reload `Settings row found`; `node scripts/supabase.mjs settings` must show Chrome's zone. The WP7 session was not permitted to delete the row, so it was left as is (DEVLOG WP7, deviation 7).
-  - **WP9 must add to the HANDOFF link steps:** `vercel link` rewrites `.env.local` (it pulls the development env) and appends `.vercel`/`.env*` to `.gitignore`. Back up `.env.local` before linking, and run `git checkout -- .gitignore` after it (DEVLOG WP7, deviation 4).
-  - Production serves commit `9c23319`; the next production deploy is the `Deploy` workflow at Ship. To rerun the smoke check without deploying, see DEVLOG WP7 "Notes for testers".
-  - Best-effort items (§0.1): the pin check and the `--expect-protected` probe are done. `env:sync-vercel -- --apply --force` is implemented and unit-tested, but was not run against the live project (the session was not permitted to overwrite); the substitute is `vercel env rm <NAME> <target> --yes`, then `--apply`. The preview API fallback is implemented but was not needed.
-  - The `settings` row already exists (`Asia/Tokyo`, created by Chrome in WP6). Any test that deletes it must let a real browser on the owner's machine recreate it, never a headless one.
-  - The opening ritual includes `npm run db:ping` (must print `db: ok (200)`).
-  - After Phase 0, Phase 1 runs the **team workflow**: `docs/process/TEAM_WORKFLOW.md`, `.claude/workflows/team-pipeline.js`, and `docs/phases/phase-1/pipeline-args.json`.
-- **Blockers:** none.
-- **Notes:**
-  - Local Node 26 prints an `EBADENGINE` warning for `engines.node = 24.x`; this is expected (CI and Vercel use Node 24).
-  - The owner's commit `28df4fd` (balanced team-pipeline profile) landed after the plan baseline `1195168`; WP2 kept its `CLAUDE.md` paragraph verbatim (see DEVLOG WP1 and WP2).
-  - Local gate: `npm run verify` (typecheck, lint, format:check, test:coverage, build, and `npm run check`). Run `npm run check:commits` and `npm run check:leaks` before every push; run `node scripts/checks/commits.mjs --text-file <file>` on any PR, issue or release text before `gh … create/edit`.
-  - CI: `CI / ci-verify` runs on every push and PR. The `main` ruleset (24225914) requires it; never rename the job, add path filters or use `[skip ci]`, or the merge into `main` stays blocked.
-  - A local `npm run build` with `.env.local` present bundles the real Supabase URL and publishable key into `dist/`. `dist/` is gitignored; never commit, upload or paste it. CI builds are unconfigured by design, and show "Database not configured". The same applies to `.vercel/` after a local deploy (`project.json`, `.env.production.local` and `output/`).
-  - The Vercel development env is the source of truth for `.env.local` on other machines. Run `npm run env:sync-vercel` (a read-only report that prints names only) before any `vercel env pull`, and `npm run env:sync-vercel -- --apply` after adding a local key.
-  - Local production deploy (same script as CI): `PROD_URL="$(node scripts/lib/env-file.mjs get .env.local PROD_URL)" DEPLOY_LOG_DIR=<scratch folder> bash scripts/ci/deploy-prod.sh`. It needs the link (`.vercel/project.json`) and prints no URLs; delete the log folder afterwards, because it holds the generated deployment URL.
-  - All date and time logic goes through `src/core/dates.ts` (ESLint blocks reading the clock anywhere else). The coverage thresholds for `src/core` are enforced by `npm run test:coverage` (part of `verify` and CI).
-- **Optional before Phase 1:** run `gh auth refresh -s project` so the pipeline can maintain a GitHub Project board.
+- **IDs:**
+  - tracking issue **#1**
+  - draft PR **#2** (`phase-0-foundation` → `main`, `Closes #1`)
+  - ruleset **24225914** ("main protection"). Re-apply it only with the PLAN §9.5 GET-then-PUT/POST snippet, never with a second POST.
+- **Pipeline for Phase 0:** `.claude/workflows/phase-pipeline.js`, args in `docs/phases/phase-0/pipeline-args.json`.
 
-## How to continue on another machine
-Run these in Git Bash.
-1. Install Node 24 (the version in `.nvmrc`), Git, GitHub CLI, and Claude Code.
-2. `gh auth login` (account `karthi-ai-engineer`), then `git clone -b phase-0-foundation https://github.com/karthi-ai-engineer/Structured.git`, then `cd Structured`.
-3. Inside the repo, set the identity and credentials (single quotes, so Git Bash does not expand `!`):
-   - `git config user.email karthi.ai.engineer@gmail.com`
-   - `git config credential.https://github.com.helper ''`
-   - `git config --add credential.https://github.com.helper '!gh auth git-credential'`
-4. `npm ci`, then `npm run verify` (must exit 0).
-5. Log in to the clouds (same accounts as before): `npx supabase login` and `npx vercel login`.
-6. Restore the secrets from the Vercel development env:
-   1. `npx --yes vercel@61.1.0 project ls --scope <team>` (the team slug from `npx --yes vercel@61.1.0 teams ls`) must list exactly one `structured-…` project. `npx --yes vercel@61.1.0 project inspect <that name> --scope <team>` must succeed before linking.
-   2. `npx --yes vercel@61.1.0 link --yes --project <that name> --team <team>`. Stop if the CLI says it is creating a project.
-   3. `git checkout -- .gitignore` (link appends lines to it), then `npx --yes vercel@61.1.0 env pull .env.local --yes`.
-   4. `npm run env:check` (all 7 keys `ok`), `npm run db:link`, `npm run db:migrations` (`0001` local and remote) and `npm run db:ping` (`db: ok (200)`).
+### Done
+Details, commands and deviations for every work package are in `docs/phases/phase-0/DEVLOG.md`.
+- **WP1** Scaffold: Vite 8 + React 19 + TypeScript 6.0 strict in the repo root, `@/` alias, LF `.gitattributes`, `.editorconfig`, Node 24 pin (`.nvmrc`, `engines`), privacy metas, strict dev/preview ports.
+- **WP2** Styling and rules: Tailwind CSS v4, shadcn/ui (`radix-nova`, `Button`), type-aware ESLint with the architecture and clock rules, Prettier, README-only placeholder folders, `CLAUDE.md` part 1.
+- **WP3** Tests and CI: hermetic Vitest, the repo checks (`check:hygiene`, `check:leaks`, `check:commits`, `check:core`), `npm run verify`, `ci.yml` with the required **`ci-verify`** job, Dependabot, PR and issue templates, labels `dependencies` and `ci`.
+- **WP4** Time-zone core: `src/core/dates.ts` (full PLAN §6.1 API, exact offsets from Intl), 320 table-driven tests, coverage thresholds 95/95/100/90 (actual 99.45 / 99.13 / 100 / 99.4).
+- **WP5** Supabase: project `structured` (ap-south-1, organization "Karthi labs") created by the idempotent `npm run db:setup`; `0001_init.sql` pushed; generated types with no drift; `npm run test:integration` 7/7.
+- **WP6** "DB connected": typed client, settings repository, health check with typed error codes, the status page (`use()` under `Suspense`, no `useEffect`), the production env guard and the `build-sha` meta. The `settings` row was created by the owner's Chrome with `timezone=Asia/Tokyo`.
+- **WP7** Vercel: the secret-named project (Git integration off, Vite, Node.js 24.x, Standard Protection), `vercel.json`, the env matrix in sync, `scripts/ci/deploy-prod.sh` (the one deploy path) with the smoke check, `deploy.yml`, GitHub secrets. Production serves commit `9c23319` and shows "DB connected".
+- **WP8** GitHub: ruleset 24225914 on `main` (PR with 0 approvals, merge commits only, `ci-verify` required, no force-push or deletion), CodeQL default setup `configured` (languages follow at Ship), description and 12 topics.
+- **WP9** (in progress) Docs and final sweep: `CLAUDE.md` part 2 (commands, env matrix, CI/CD flow, Dependabot fix paths, secrets rules, runbook links, work package checklist) and the README rewrite are done. Next in WP9: this HANDOFF's resume rehearsal on a fresh clone, then the final leak and attribution sweep.
 
-   WP9 rehearses and finalises this sequence.
-7. Open Claude Code in the repo and say, for example: *"Read HANDOFF.md and CLAUDE.md, then resume the Phase 0 pipeline."* Claude should:
-   - take `docs/phases/phase-0/pipeline-args.json`
-   - fill in `root` (this clone's absolute path), `today`, `envNotes` (this machine's tools), `resumeFrom` and `skipWPs` (from **Current status** above)
-   - run `Workflow({ scriptPath: ".claude/workflows/phase-pipeline.js", args: <that JSON> })`
+### Cloud resources (values only in `.env.local`)
+- **Supabase** project `structured`, ap-south-1, organization "Karthi labs". It uses the second and last free slot. URL, ref, keys and database password: `.env.local` and the Vercel development env.
+- **Vercel** project in the "Karthi Labs" team. Its name is secret (`VERCEL_PROJECT_NAME` in `.env.local`). Production is deployed from this machine with `scripts/ci/deploy-prod.sh`; from Ship on, only the `Deploy` workflow deploys. The production URL is `PROD_URL` in `.env.local`.
+- **GitHub:** repo secrets `VERCEL_TOKEN` (Vercel scope "Karthi Labs"), `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL`; ruleset 24225914; CodeQL default setup; description and 12 topics.
+
+### Next
+1. **Finish WP9:** the resume rehearsal (follow "New machine" below on a throwaway clone), the final sweep (PLAN §12 AC 36 to 38), the PR #2 body update, and the WP9 tick on issue #1.
+2. **Then:** QA round 1 (`test1`), QA round 2 (`test2`), final verification, Ship (PLAN §17.1).
+3. **Ship follow-ups:**
+   - **CodeQL languages** (PLAN §17.1 step 8). Right after the merge, `gh api repos/karthi-ai-engineer/Structured/code-scanning/default-setup --jq '.state, .languages'` must show `configured` with `javascript-typescript` and `actions`. If a language is missing, run: `printf '{"state":"configured","query_suite":"default","languages":["javascript-typescript","actions"]}' | gh api -X PATCH repos/karthi-ai-engineer/Structured/code-scanning/default-setup --input -`. The same follow-up is in the PR #2 body.
+   - **Merge with `gh pr merge 2 --merge`.** The ruleset allows merge commits only and needs a green `ci-verify` on the PR head.
+   - **Before the merge,** this file must state the post-Ship state (Phase 0 shipped as `v0.0.1`; next is Phase 1 on `phase-1-web-mvp` with the team workflow), and the README status row must still be right.
+4. **Open item for QA or the owner: M2 against production** (AC 24 bullet 2). Delete the `settings` row with a one-off secret-key command, then load production in the owner's Chrome: the first load must show `Settings row created`, a reload `Settings row found`, and `node scripts/supabase.mjs settings` must show Chrome's zone. No WP session was permitted to delete the row (DEVLOG WP7, deviation 7).
+5. **Forward notes for the next planners:**
+   - **Phase 1 seeding trigger.** The `settings` row already exists, so the master plan's "no settings row → create it and seed Rise and Shine / Wind Down" never fires. Phase 1 must choose another trigger, for example a `settings.seeded_at` marker set by a conditional update (`… where seeded_at is null`), so that exactly one device seeds.
+   - **Phase 2 early checks.**
+     - Give `server/` and `api/` their own tsconfig (for example `tsconfig.server.json`) referenced from `tsconfig.json`. Otherwise type-aware ESLint fails with "was not found by the project service".
+     - Verify early that Vercel's function bundling resolves `src/core`'s relative imports with `.ts` extensions (for example with `rewriteRelativeImportExtensions`, or Node 24 type stripping in the function runtime) before building tools on top of it.
+   - **Best-effort items (PLAN §0.1): none deferred.** The pin and workflow checks in `check:hygiene` and the `--expect-protected` probe are done. `env:sync-vercel -- --apply --force` is implemented and unit-tested but was never run against the live project (no session was permitted to overwrite); the substitute is `npx --yes vercel@61.1.0 env rm <NAME> <target> --yes`, then `npm run env:sync-vercel -- --apply`. The preview API fallback is implemented but was not needed.
+   - **Open questions for the owner** (PLAN §16, asked in the phase report): commit signing (commits show "Unverified"), a committed harness setting against attribution, a license, Dependabot security updates, non-provider secret-scanning patterns, local Node 24, and a keep-alive ping before Phase 3.
+6. **After Phase 0:** Phase 1 runs the **team workflow**: `docs/process/TEAM_WORKFLOW.md`, `.claude/workflows/team-pipeline.js` and `docs/phases/phase-1/pipeline-args.json`. Optional before Phase 1: `gh auth refresh -s project`, so the pipeline can maintain a GitHub Project board.
+
+### Blockers
+None.
+
+### Notes
+- Local Node 26 prints an `EBADENGINE` warning for `engines.node = 24.x`. This is expected; CI and Vercel use Node 24.
+- The owner's commit `28df4fd` (balanced team-pipeline profile) landed after the plan baseline `1195168`; its `CLAUDE.md` paragraph is kept verbatim (DEVLOG WP1 and WP2).
+- Local gate: `npm run verify`. Before every push: `npm run check:commits` and `npm run check:leaks`. Before any `gh … create/edit` of PR, issue or release text: `node scripts/checks/commits.mjs --text-file <file>` and the PR-text word check (`CLAUDE.md`, "Secrets").
+- `ci-verify` is required by the ruleset: never rename the job, add path filters or use `[skip ci]`.
+- A local `npm run build` with `.env.local` present bundles the real Supabase URL and publishable key into `dist/`. `.vercel/` after a local deploy holds `project.json` (IDs and name), `.env.production.local` and `output/`. Both folders are gitignored: never commit, upload or paste them. CI builds are unconfigured by design and show "Database not configured".
+- The Vercel development env is the source of truth for `.env.local`: `npm run env:sync-vercel` (read-only report) before any `vercel env pull`, and `npm run env:sync-vercel -- --apply` after adding a local key.
+- **Local production deploy** (the same script as CI): `PROD_URL="$(node scripts/lib/env-file.mjs get .env.local PROD_URL)" DEPLOY_LOG_DIR=<scratch folder> bash scripts/ci/deploy-prod.sh`. It needs the link (`.vercel/project.json`) and prints no URLs. Delete the log folder afterwards, because it holds the generated deployment URL.
+- **Smoke check without deploying:** `PROD_URL="$(node scripts/lib/env-file.mjs get .env.local PROD_URL)" EXPECTED_SHA=<the deployed commit, now 9c2331913bf037b2a6391823835c6c0bdfb25e2f> SUPABASE_ENV_FILE=.vercel/.env.production.local node scripts/ci/smoke.mjs`.
+- The `settings` row exists (`Asia/Tokyo`, created by Chrome in WP6). Any test that deletes it must let a real browser on the owner's machine recreate it, never a headless one.
+
+## Find the live branch
+`git ls-remote --heads https://github.com/karthi-ai-engineer/Structured` lists the branches. The newest `phase-*` branch holds the live `HANDOFF.md`; if there is none, use `main`. During Phase 0 the live branch is `phase-0-foundation`.
+
+## New machine
+Run everything in **Git Bash**, one step at a time. Each step ends with a check; stop and fix it before going on.
+
+1. **Tools.** Install Node 24 (the version in `.nvmrc`): `winget install Schniz.fnm`, then `fnm install 24 && fnm use 24`; or nvm-windows: `nvm install 24 && nvm use 24` (it ignores `.nvmrc`). Also install Git, the GitHub CLI and Claude Code. To run npm from PowerShell as well, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once.
+   - Check: `node --version` prints `v24.…` (Node 26 also works, with an `EBADENGINE` warning), and `git --version` and `gh --version` work.
+2. **GitHub login.** `gh auth login` as `karthi-ai-engineer`, then `gh auth refresh -s workflow`.
+   - Check: `gh api user --jq .login` prints `karthi-ai-engineer`, and `gh auth status` lists the `workflow` scope.
+3. **Clone the live branch** (see "Find the live branch"):
+   ```bash
+   git clone -b <live branch> https://github.com/karthi-ai-engineer/Structured.git && cd Structured
+   ```
+   - Check: `git branch --show-current` prints the live branch.
+4. **Identity and credentials**, inside the repo only (single quotes, so Git Bash does not expand `!`):
+   ```bash
+   git config user.name "<your name>"
+   git config user.email karthi.ai.engineer@gmail.com
+   git config credential.https://github.com.helper ''
+   git config --add credential.https://github.com.helper '!gh auth git-credential'
+   ```
+   - Check: `git config --get-all credential.https://github.com.helper` prints an empty line and then `!gh auth git-credential`, and `git ls-remote origin` works without a prompt.
+   - Commits show "Unverified" on GitHub until commit signing is set up (open question 1 in `docs/phases/phase-0/PLAN.md` §16).
+5. **Dependencies.** `npm ci`.
+   - Check: it exits 0. An `EBADENGINE` warning on a Node other than 24 is fine.
+6. **Vercel: link to the existing project, then pull the env.** The owner logs in with a browser; `VERCEL_TOKEN` in the environment is the headless alternative. CLI output that names the secret project goes into `.vercel/` (gitignored), never to the screen.
+   ```bash
+   V="npx --yes vercel@61.1.0"
+   $V login                      # browser; skip it if `$V whoami` already prints your user
+   $V teams ls                   # the id column of the "Karthi Labs" row is the team slug
+   TEAM='<team slug>'
+   mkdir -p .vercel
+   $V project ls --scope "$TEAM" --filter structured- --limit 100 --format json > .vercel/ls.json 2> .vercel/ls.err
+   NAME="$(node -e "const p=JSON.parse(require('fs').readFileSync('.vercel/ls.json','utf8')).projects.filter(x=>x.name.startsWith('structured-')); if(p.length===1){process.stdout.write(p[0].name)} else {console.error('expected exactly 1 structured-* project, found '+p.length); process.exit(1)}")" && export NAME && echo "project found"
+   $V project inspect "$NAME" --scope "$TEAM" --format json > .vercel/inspect.json 2> .vercel/inspect.err && echo "inspect ok"
+   ```
+   - Check: it prints `project found` and `inspect ok`. Never link before both. The inspect proves the project exists, so `link` cannot take the CLI's "create a new project" path (which would also connect Git).
+   ```bash
+   $V link --yes --project "$NAME" --team "$TEAM" > .vercel/link.log 2>&1
+   node -e "const p=require('./.vercel/project.json'); process.exit(p.projectId && p.orgId && p.projectName===process.env.NAME ? 0 : 1)" && echo "linked to the existing project"
+   git checkout -- .gitignore    # link appends .vercel and .env* lines (with CRLF); the existing rules already cover them
+   git status --short            # must print nothing
+   ```
+   - Check: it prints `linked to the existing project`, and `git status --short` is empty. If `link` fails or the check fails, stop: never let the CLI create a project.
+   ```bash
+   $V project ls --scope "$TEAM" --filter structured- --limit 100 --format json > .vercel/ls.json 2> .vercel/ls.err
+   node -e "const n=JSON.parse(require('fs').readFileSync('.vercel/ls.json','utf8')).projects.filter(x=>x.name.startsWith('structured-')).length; console.log('structured-* projects: '+n); process.exit(n===1?0:1)"
+   $V git disconnect --yes > .vercel/git.log 2>&1 || true   # "No Git repository connected" is fine
+   $V project inspect "$NAME" --scope "$TEAM" --format json > .vercel/inspect.json 2> .vercel/inspect.err
+   node -e "const j=JSON.parse(require('fs').readFileSync('.vercel/inspect.json','utf8')); const k=Object.keys(j).filter(x=>/link|git/i.test(x)); console.log(k.length ? 'GIT LINK FOUND: '+k.join(',') : 'no git link'); process.exit(k.length ? 1 : 0)"
+   $V env pull .env.local --yes > .vercel/pull.log 2>&1 && echo "env pulled"
+   rm -f .vercel/ls.json .vercel/ls.err .vercel/inspect.json .vercel/inspect.err .vercel/link.log .vercel/git.log .vercel/pull.log
+   ```
+   - Check: `structured-* projects: 1` (linking created nothing), `no git link`, and `env pulled`.
+7. **Env check.** `npm run env:check`.
+   - Check: all 7 keys print `ok`. `vercel env pull` also adds `VERCEL_OIDC_TOKEN`, which is expected.
+8. **Supabase.**
+   ```bash
+   npx supabase login            # browser; SUPABASE_ACCESS_TOKEN in the environment is the headless alternative
+   npm run db:link
+   npm run db:migrations
+   npm run db:ping
+   ```
+   - Check: `db:link` exits 0, `db:migrations` shows `0001` both locally and remotely, and `db:ping` prints `db: ok (200)`. The first three need outbound TCP 5432 (see "Recovery and runbooks").
+9. **Verify and run.** `npm run verify`, then `npm run dev`.
+   - Check: `verify` exits 0. `http://localhost:5173` shows "Structured" and **"DB connected"**. Stop the server afterwards (Ctrl+C, or `taskkill /PID <pid> /T /F`), and confirm that `netstat -ano | findstr ":5173 :4173"` prints nothing.
+10. **Continue.** Work from "Next" above, or resume the pipeline. Open Claude Code in the repo and say, for example: *"Read HANDOFF.md and CLAUDE.md, then resume the Phase 0 pipeline."* Claude should:
+    - take `docs/phases/phase-0/pipeline-args.json`
+    - fill in `root` (this clone's absolute path), `today`, `envNotes` (this machine's tools), and `resumeFrom` and `skipWPs` (from "Current status" above)
+    - run `Workflow({ scriptPath: ".claude/workflows/phase-pipeline.js", args: <that JSON> })`
+
+**Re-linking an existing clone** (for example after deleting `.vercel/`): first back up `.env.local` (`cp .env.local .vercel/env.local.bak` after `mkdir -p .vercel`), because `link` rewrites it. Then follow step 6, and restore any local-only keys from the backup. Delete the backup afterwards.
+
+## Returning to an existing clone
+1. `git fetch --prune && git switch <live branch> && git pull --ff-only` (never force-push).
+2. `npm ci` if `package-lock.json` changed since your last session.
+3. `npm run env:sync-vercel` (a read-only report). If a key differs or is missing locally, run `npx --yes vercel@61.1.0 env pull .env.local --yes`, then `npm run env:check`.
+4. `npm run db:ping` prints `db: ok (200)`.
+5. `npm run db:migrations` shows the same versions locally and remotely.
+
+## Recovery and runbooks
+
+### Paused database (HTTP 540)
+The free Supabase project pauses after 7 days without activity. `npm run db:ping` then prints `PAUSED (540)`, and the app shows "The Supabase project is paused".
+1. Supabase dashboard → project `structured` → **Restore**.
+2. Wait until it is healthy.
+3. `npm run db:ping` and `npm run db:migrations`.
+
+The data is kept.
+
+### Database commands cannot connect
+`npm run db:link`, `db:push` and `db:migrations` need **outbound TCP 5432** to the Supabase pooler. A REST `200` from `db:ping` does not prove that the port is open. Try another network. `db:types`, `db:ping` and `node scripts/supabase.mjs settings` use HTTPS only. Never use `--skip-pooler`, and never use the Docker-only commands (`db diff`, `db pull`, `start`).
+
+### Production rollback
+Run these in a linked clone (`.vercel/project.json` present). The deployment lists contain URLs: keep them in your terminal, never paste them anywhere.
+1. If a deploy broke production: `npx --yes vercel@61.1.0 ls --environment production --scope <team>` lists the production deployments, newest first. Roll back to the previous one: `npx --yes vercel@61.1.0 rollback <previous deployment URL or ID> --yes --scope <team>`. Hobby can roll back only to the previous production deployment.
+2. A rollback **turns off automatic assignment of the production domain**. Fix forward through a PR and let `Deploy` run. Its smoke SHA check fails while production stays on the rolled-back deployment; this is expected.
+3. Promote the fixed deployment (the newest one in that list): `npx --yes vercel@61.1.0 promote <that deployment URL or ID> --yes --scope <team>`. This turns automatic assignment back on.
+4. Re-run `Deploy` (`gh workflow run deploy.yml --ref main`) and confirm that it is green.
+
+### Leak response
+If a secret, a URL or the project name reaches a pushed commit, a PR, an issue or a public log:
+1. **Rotate** what leaked:
+   - Supabase keys: dashboard → API Keys
+   - database password: dashboard → Database → Reset
+   - Vercel token: Account → Tokens (then update the `VERCEL_TOKEN` secret)
+   - project name or URL: create a new Vercel project with a new secret name, then re-link
+2. Update `.env.local` with `node scripts/lib/env-file.mjs set <KEY>` (value on stdin).
+3. `npm run env:sync-vercel -- --apply --force`, or for each rotated key `npx --yes vercel@61.1.0 env rm <NAME> <target> --yes` followed by `npm run env:sync-vercel -- --apply`.
+4. Redeploy (`gh workflow run deploy.yml --ref main`).
+5. Update the affected GitHub secrets (`… | gh secret set <NAME>`, value from stdin).
+6. Record the rotation in the phase `DEVLOG.md`, without values.
+
+History on `main` cannot be rewritten (ruleset), and GitHub keeps PR views, so **rotation is the fix**. The publishable key and the URL are baked into the bundle, so rotating them needs a rebuild.
+
+### Commit signing fails
+If `git commit` fails with a GPG or pinentry error: stop and ask the owner. Never pass `--no-gpg-sign`, and never change the git config.
+
+### `vercel link` changed local files
+`git checkout -- .gitignore`, and restore `.env.local` from the backup (see "Re-linking an existing clone").
 
 ## How we work
-See `CLAUDE.md` ("Running a phase") and `PLAN.md` §14. Every phase: branch → tracking issue → pipeline → PR → CI → merge → deploy → release. No AI attribution anywhere.
+See `CLAUDE.md` (rules, commands, CI/CD flow, "Running a phase") and `PLAN.md` §14. Every phase: branch → tracking issue → pipeline → PR → CI → merge → deploy → release. No AI attribution anywhere.
