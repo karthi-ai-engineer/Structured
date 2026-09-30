@@ -28,8 +28,10 @@
     "env:check": "node scripts/lib/env-file.mjs check"
   },
   "dependencies": {
+    "@date-fns/tz": "^1.5.0",
     "class-variance-authority": "^0.7.1",
     "cn": "^0.4.0",
+    "date-fns": "^4.4.0",
     "lucide-react": "^1.49.0",
     "radix-ui": "^1.6.7",
     "react": "^19.3.0",
