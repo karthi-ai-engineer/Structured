@@ -521,3 +521,122 @@ npm run format; npm run verify; npm run check:commits; npm run check:leaks
 - **Unit tests** under `scripts/` include one real `supabase --version` run (no network, under a second). In CI it proves that the Linux binary resolves.
 - **Advisors (§13.4)** were not checked in the dashboard in this WP. The expected result is only "RLS policy always true" on the 6 tables.
 - **`supabase/config.toml`** comes from `supabase init` unchanged. Only the CLI's local tooling reads it (the project is cloud-only; Docker is not used).
+
+---
+
+## WP6: Typed client, health check and the "DB connected" home page
+
+**Date:** 2026-09-30 (UTC+9). **Branch:** `phase-0-foundation`. **Tracking issue:** #1. **PR:** #2 (draft).
+
+### What was done
+- **Data layer** (commit `feat: add typed Supabase client, settings repository and health check`):
+  - `src/env.d.ts`: the three optional browser variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_BUILD_SHA`), with Vite's `strictImportMetaEnv` on, so reading an undeclared `import.meta.env` key is a type error.
+  - `src/data/env.ts`: `readSupabaseEnv()` (§6.2). It has no imports, because `vite.config.ts` loads it in plain Node. It rejects:
+    - missing or empty values
+    - both Vercel placeholders
+    - surrounding whitespace and control characters
+    - URLs that do not parse, are not `https:` (`http:` only for `localhost`/`127.0.0.1`), carry credentials, a query or fragment, or have a path other than `/`
+    - secret keys
+    - with `requirePublishable`, anything that is not `sb_publishable_…`
+
+    It reports at most one problem per variable, always starting with the variable's name, and never the value.
+  - `src/data/errors.ts`: `toDbErrorCode()` (§6.4 mapping).
+  - `src/data/supabase.ts`: `createDb()` (no session persisted, refreshed or read from the URL; optional custom `fetch`), `supabaseEnv`, and `supabase` (`null` when not configured).
+  - `src/data/repo/settings.ts`: `createSettingsStore(db)`. `readSettingsId` is `select('id').eq('id', 1).abortSignal(s).retry(false).maybeSingle()`, and `insertDefaultSettings` is `insert({ id: 1, timezone }).abortSignal(s).retry(false)`, with `23505` mapped to `exists`. It never throws and returns codes only.
+  - `src/data/health.ts`: `checkDatabase()` (§6.4 flow: not-configured, offline short-circuit, one shared `AbortController` with a 12 s deadline for read, insert and re-read, timer cleared in `finally`, `error/unexpected` on any throw) and `singleflight()`.
+  - `src/data/dbCheck.ts`: `startDbCheck`, the singleflight bound to the real client. It is the only data module `App` uses.
+  - `src/platform/timezone.ts` (`detectTimeZone()`: `normalizeTimeZone` of Intl's zone, `'UTC'` on any failure) and `src/platform/network.ts` (`isOnline()`).
+- **UI** (commit `feat: show database connection status on home page`):
+  - `src/components/DbStatusBadge.tsx`:
+    - `data-testid="db-status"`, `data-state`, `role="status"`, `aria-live="polite"` and `aria-atomic="true"`
+    - a title (`db-status-title`) and a detail (`db-status-detail`)
+    - the error code in monospace (`db-status-code`, text `code: <code>`)
+    - a lucide icon per state (spinner `motion-safe:animate-spin`, check, alert, triangle, wifi-off), so the state is never conveyed by colour alone
+    - the fixed §6.6 copy for every state and code
+  - `src/components/RootErrorBoundary.tsx`: a class boundary that shows "Something went wrong" and a `min-h-11` "Reload" button.
+  - `src/App.tsx` (§6.6):
+    - the status promise lives in `App` state, created by `useState(runDbCheck)`
+    - `DbStatusView` calls `use(promise)` under `<Suspense>` with the checking badge as the fallback
+    - "Check again" runs in `startTransition` and is `disabled` and `aria-busy` while pending, with a spinner icon
+    - there is no `useEffect`
+  - `src/main.tsx`: `<StrictMode><RootErrorBoundary><App /></RootErrorBoundary></StrictMode>`.
+- **Build** (commit `feat: refuse production builds without valid Supabase env`): `vite.config.ts` is now exactly §5.6: the production guard (`REQUIRE_SUPABASE_ENV=1` or `VERCEL_ENV=production`, with `requirePublishable`) and the `buildShaMeta` plugin (7 to 40 lowercase hex characters, otherwise `dev`). `tsconfig.node.json` needed no change: `tsc -b` reported no TS6307.
+- **Lint fix** (commit `fix: allow react-dom/server in the server import rule`): see deviation 7.
+- **Tests** (commit `test: cover env parsing, error mapping and the health check`), all in the node environment with no network:
+  - `src/data/__tests__/env.test.ts` (§13.1 rows plus a service_role JWT, credentials, other protocols and malformed JWTs; every rejection checks "one problem, naming the variable" and "the value is not echoed")
+  - `src/data/__tests__/errors.test.ts` (every §6.4 row, unsafe codes ignored, non-string values, `NaN` status)
+  - `src/data/__tests__/settings-store.test.ts`: a real `createDb(url, key, { fetch: stub })` for every §13.1 row, plus 503/520 (retryable statuses), two rows (`pg-PGRST116`), a check violation and a throwing client. Every failure asserts **one** fetch call. The success cases assert the request shape (`GET /rest/v1/settings?select=id&id=eq.1`, the `apikey` header, the caller's signal, and the `POST` body `{id: 1, timezone}`). A 500 with a URL in `message`, `details` and `hint` returns only `http-500`.
+  - `src/data/__tests__/health.test.ts`: every §13.1 row. Also:
+    - one shared signal across all three calls, and no timer left after success
+    - timeout at exactly 12 000 ms (still pending at 11 999) with the signal aborted
+    - a 5 s read plus a 5 s insert plus a hung re-read also time out at 12 s total
+    - a custom `timeoutMs`
+    - `singleflight`: sharing, a new call after resolve and after reject, and a synchronous throw
+  - `src/data/__tests__/dbCheck.test.ts`: the unit-level half of M3. The real `startDbCheck` in the unconfigured unit environment has `supabase === null`, resolves `not-configured` with both names, and two calls share one promise.
+  - `src/platform/__tests__/platform.test.ts`: the zone, canonical spelling, the `UTC` fallback for invalid, empty, offset and throwing cases, and `isOnline` for false, true, unknown and no `navigator`.
+  - `src/components/__tests__/DbStatusBadge.test.tsx` (`renderToStaticMarkup`): for every state and every error code, the test ids, `role`, `aria-live`, a hidden icon, the exact copy, the monospace code, and no URL.
+  - `src/components/__tests__/RootErrorBoundary.test.tsx` and `src/__tests__/App.test.tsx`: the first paint shows the name, the checking badge and an enabled `min-h-11` "Check again" button with `aria-busy="false"`.
+
+### Commands run
+```
+gh api user --jq .login; git config user.email; git pull --ff-only; netstat -ano   # opening ritual
+npm run db:ping                                   # db: ok (200)
+node scripts/supabase.mjs settings                # settings row: missing (as WP5 left it)
+npm run typecheck; npm run lint; npx vitest run src/data src/components src/platform src/__tests__
+npm run format; npm run verify
+# production guard and build SHA (SCRATCH = the session scratchpad)
+REQUIRE_SUPABASE_ENV=1 VITE_SUPABASE_URL= npx vite build --outDir "$SCRATCH/x"
+VERCEL_ENV=production VITE_SUPABASE_PUBLISHABLE_KEY='[SENSITIVE]' npx vite build --outDir "$SCRATCH/x2"
+REQUIRE_SUPABASE_ENV=1 VITE_SUPABASE_PUBLISHABLE_KEY="<runtime-built secret-key string>" npx vite build --outDir "$SCRATCH/x3"
+REQUIRE_SUPABASE_ENV=1 VITE_BUILD_SHA="$(git rev-parse HEAD)" npx vite build --outDir "$SCRATCH/x4"
+VITE_BUILD_SHA=not-a-sha npx vite build --outDir "$SCRATCH/x5"
+node scripts/checks/leaks.mjs --files "$SCRATCH"/guard*.log
+# M1 / M2 (the owner's Chrome on this machine, through the Claude in Chrome extension)
+npm run dev                                       # then http://localhost:5173/ in Chrome, reload, "Check again"
+node scripts/supabase.mjs settings
+taskkill /PID <pid> /T /F
+# M3
+VITE_SUPABASE_URL= VITE_SUPABASE_PUBLISHABLE_KEY= npx vite build --outDir "$SCRATCH/dist-unconf"
+npx vite preview --outDir "$SCRATCH/dist-unconf" --strictPort   # then http://localhost:4173/ in Chrome
+taskkill /PID <pid> /T /F
+npm run check:commits; npm run check:leaks; git push origin phase-0-foundation
+gh run view <id> --log | node scripts/checks/leaks.mjs --stdin
+```
+
+### Verification results
+| Check | Result |
+|---|---|
+| `npm run verify` | exit 0: 22 test files, 705 unit tests (WP5: 13 and 504), `src/core` coverage unchanged (99.45 / 99.13 / 100 / 99.4), build ok, `check` ok |
+| `npm run lint` | 0 problems (react-hooks included). `grep -rn useEffect src` finds nothing |
+| Production guard (AC 21) | `REQUIRE_SUPABASE_ENV=1 VITE_SUPABASE_URL= npx vite build` exits **1** with `Production build refused; invalid Supabase env: VITE_SUPABASE_URL is missing` and writes no output folder. `VERCEL_ENV=production` with the `[SENSITIVE]` key and `REQUIRE_SUPABASE_ENV=1` with a secret key also exit 1, naming only `VITE_SUPABASE_PUBLISHABLE_KEY`. All five build logs pass `check:leaks --files` |
+| Build SHA | a normal `npm run build` writes `<meta name="build-sha" content="dev" />` into `dist/index.html`. `VITE_BUILD_SHA=<HEAD>` stamps that SHA; `not-a-sha` falls back to `dev` |
+| Configured production build (guard on, `.env.local`) | exit 0. The bundle contains the configured host and publishable key (1 file each; counts only) and **not** the secret key (0 files). `VITE_BUILD_SHA` is not in the JS |
+| **M1** (dev server, Chrome) | the page shows "Structured", `[data-testid=db-status-title]` = `DB connected` with `data-state="connected"`, and "Check again". Clicking it set `disabled` and `aria-busy="true"` while pending, then false; a MutationObserver saw only `connected` during the re-check (no flash back to "checking"). No console warnings or errors (only Vite and React DevTools info lines) |
+| **M2** (write proof) | the row was still missing (WP5 left it so on purpose), so step 1 (delete) was not needed. First Chrome load: `DB connected` / `Settings row created`. Reload: `Settings row found`. `node scripts/supabase.mjs settings`: `present, timezone=Asia/Tokyo`, which equals Chrome's `Intl.DateTimeFormat().resolvedOptions().timeZone` (`Asia/Tokyo`), not `UTC` (AC 19) |
+| StrictMode singleflight | exactly **1** `/rest/v1/settings` request per dev page load (Performance resource entries, counted without URLs) |
+| **M3** (unconfigured build) | in Git Bash, `VITE_…=` (empty) reaches Node as `""` (confirmed) and overrides `.env.local`: the bundle contains neither configured value. The preview shows `Database not configured`, `data-state="not-configured"`, detail `Missing or invalid: VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY`, no console messages at all, and no `/rest/v1` request. `.env.local` was never renamed |
+| Ports after M1 to M3 | both servers stopped with `taskkill /T /F`; no listener on 5173 or 4173 |
+| `npm run check:commits` / `check:leaks` | ok (39 commits in `origin/main..HEAD`) |
+| CI `ci-verify` for `ba4fbcc` | push run 36664867646 and PR run 36664871018 both `success`. The logs show `node: v24.21.0`, `Test Files 22 passed`, `Tests 705 passed`, the build, and `hygiene`, `leaks`, `commits` and `core` ok. This is the unconfigured CI build, so the `not-configured` path compiles and the guard stays off |
+| CI log leak scan (`gh run view <id> --log \| node scripts/checks/leaks.mjs --stdin`, with `.env.local` present) | `leaks: ok` for both runs |
+
+### Deviations
+1. **Stricter key rules than §6.2.** A legacy JWT whose `role` is `service_role` is rejected like `sb_secret_…` (it is a secret key too). Outside production builds, a key must be `sb_publishable_…` or a legacy JWT with a `role` claim; any other format is rejected ("neither a publishable key nor a legacy anon key"). A publishable key needs characters after the prefix, from `[A-Za-z0-9_.-]` only. `atob` (global in browsers and Node) decodes the JWT payload, so `env.ts` stays dependency-free.
+2. **`toDbErrorCode` input is typed loosely** (`error` may be `null`; `message` and `code` are `unknown`). PostgREST returns `{ message: <raw body> }` without a code for non-JSON bodies (such as a 540 page), and any JSON value as `error`. A code is shown only if it matches `^[A-Z0-9]{1,12}$` (case-insensitive); otherwise it is ignored (`http-<status>` or `invalid-key`). A non-integer status gives `unexpected`.
+3. **The deadline also bounds a store that ignores its signal.** Each store call is raced against a promise that settles when the controller aborts, so the check always ends at 12 s. With the real client the abort also cancels the request (`AbortError`, which maps to `timeout`).
+4. **`singleflight` forwards arguments.** Its signature is `(start: (...args: A) => Promise<T>) => (...args: A) => Promise<T>`, a superset of §6.4 (`A = []`); callers that join a pending call have their arguments ignored. `startDbCheck` is this singleflight around an **async** starter (try/catch inside), rather than an `async` function itself: an `async` wrapper would return a new promise object on every call, so the two StrictMode initializer calls would no longer share one promise. The F11 intent (a synchronous throw becomes an error state) still holds.
+5. **`createDb()` is exported** from `src/data/supabase.ts`, so the settings-store tests build the client with exactly the app's options plus a stubbed `fetch`. `supabaseEnv` reads the two variables by full name instead of passing all of `import.meta.env`, so Vite inlines exactly those two values.
+6. **`not-configured` with a null store but a valid env** (not reachable in the app) returns `problems: []`. The badge then names both variables.
+7. **ESLint `noServer` fix (WP2 config).** Its `'server'` pattern matches any path segment named `server`, so it also blocked React's own `react-dom/server`, which the badge and boundary tests need. The group now ends with `'!react-dom/server'`. Re-verified: WP2 probe 4 (`src/lib/tmp.ts` importing `../../server/x`) still fails with the configured message, a bare `server/x` import still fails, and `react-dom/server` passes. The temporary files are deleted.
+8. **No URL in the badge markup.** lucide renders `xmlns="http://www.w3.org/2000/svg"` by default; the badge passes `xmlns={undefined}` (inline SVG in HTML needs no namespace). The "never renders http" test (AC 21) permits exactly one `http`: the `http-<status>` error code itself (its format comes from §6.4, and every error state shows its code). The markup never contains `://`.
+9. **Small UI additions:** `aria-atomic="true"` on the status region, a spinner icon inside "Check again" while pending, the code rendered as `code: <code>`, and the not-configured variable names derived from the problems (each problem starts with its variable's name).
+10. **Four extra test files beyond the §4 tree:** `dbCheck.test.ts`, `platform.test.ts`, `RootErrorBoundary.test.tsx` and `App.test.tsx`.
+11. **`RootErrorBoundary` has no `componentDidCatch`.** React 19 already reports caught errors to the console (`onCaughtError`), and the boundary renders nothing about the error.
+
+### Notes for testers
+- **The settings row now exists**: `timezone=Asia/Tokyo`, created by the owner's Chrome on this machine during M2 (about 12:29 UTC+9). If you repeat M2, delete it with a one-off secret-key Node command, and let a **real browser** on the owner's machine recreate it. Never let a headless browser (or one with another `timezoneId`) make the first load after a delete (F7).
+- **A local `npm run build` with `.env.local` present** bundles the real publishable key and host into `dist/` (Vite loads `.env.local` in production mode). `dist/` is gitignored; never commit, upload or paste it. CI builds are unconfigured.
+- **Offline** is detected only from `navigator.onLine === false` at the moment of the check. Automatic re-checks on `online`/focus are Phase 1 (F10).
+- **"Check again" is fast** against a healthy database, so the pending state is brief. Observe it with a MutationObserver, or with network throttling in DevTools.
+- **The StrictMode request count** (1 per dev load) is a quick way to catch a singleflight regression: 2 requests, or `created` followed by `found` on the first load, means the two initializer calls did not share one promise.
+- **The production guard runs only** with `REQUIRE_SUPABASE_ENV=1` or `VERCEL_ENV=production`. Plain `npm run build` (CI's verify build) stays unconfigured by design.

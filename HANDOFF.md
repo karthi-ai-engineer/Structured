@@ -5,7 +5,7 @@
 ## Current status
 - **Phase:** 0 (Foundation), implementation in progress
 - **Branch:** `phase-0-foundation`
-- **Last updated:** 2026-09-30 12:20 UTC+9
+- **Last updated:** 2026-09-30 12:45 UTC+9
 - **Pipeline stage reached:** stage 7 (implement). Stages 1 to 6 are done:
   - plan, edge-case research, replan and design review: `docs/phases/phase-0/PLAN.md` (approved in `review-r2.md`)
   - tracking issue **#1** ("Phase 0: Foundation", labels `phase`, `phase-0`)
@@ -15,15 +15,26 @@
   - **WP3 done** (tests, CI and repo checks): Vitest 5 (hermetic: `TZ=America/St_Johns` set in `vitest.config.ts`, blanked `VITE_*`, a rejecting `fetch` stub), the `.env` tool `scripts/lib/env-file.mjs` (`env:check`), the repo checks `check:hygiene`, `check:leaks`, `check:commits` and `check:core` (`npm run check`), and `npm run verify` as the full local gate. `.github/workflows/ci.yml` runs the **`ci-verify`** job on every push and PR (Node 24 from `.nvmrc`, npm cache); it is green on the push and the PR. Also `.github/dependabot.yml`, the PR template and issue forms, and the labels `dependencies` and `ci`. Details: `docs/phases/phase-0/DEVLOG.md`.
   - **WP4 done** (time-zone core): `src/core/dates.ts` has the full PLAN §6.1 API. It uses `date-fns` 4.4 and `@date-fns/tz` 1.5; zone offsets are computed exactly from Intl wall-clock parts, because `tzOffset()` gets historical sub-hour negative offsets wrong. It has 320 table-driven tests (API signatures, zones including Kolkata, New York, Chatham, London, Santiago, Lord Howe and historical DST, times, calendar, formatting) and the coverage thresholds 95/95/100/90 in `vitest.config.ts` (actual: 99.45 % statements, 99.13 % branches, 100 % functions). `check:core` prints `ok src/core/dates.ts`, and CI is green on Node 24. The deviations (exact offsets, true start of day, `msUntilNextDayIn` across a repeated midnight) are in `docs/phases/phase-0/DEVLOG.md`.
   - **WP5 done** (Supabase): the cloud project `structured` (ap-south-1, organization "Karthi labs") was created by the idempotent `npm run db:setup` (`scripts/setup-supabase.mjs`: every CLI call uses `--agent no` with stdin ignored, JSON shapes are normalised, `projects create` runs once with a re-list fallback). `supabase/migrations/0001_init.sql` (full schema, grants, `open_access` RLS, triggers, realtime, `notify pgrst`) is pushed: `npm run db:migrations` shows `0001` locally and remotely, and a dry-run push says the remote is up to date. `src/data/database.types.ts` is generated (`npm run db:types`, no drift). Opt-in `npm run test:integration` passes 7/7 with 0 skipped. `.env.local` has the 6 keys (`PROD_URL` comes in WP7), and `.env.example` documents all 7. Details and deviations: `docs/phases/phase-0/DEVLOG.md`.
-  - WP6 to WP9: not started.
-- **Resume with:** `resumeFrom: "implement"`, `skipWPs: ["WP1", "WP2", "WP3", "WP4", "WP5"]`
+  - **WP6 done** (the "DB connected" home page):
+    - `src/data`: `env.ts` validates the browser variables without ever echoing a value. `supabase.ts` is the typed client (`null` when unconfigured). `repo/settings.ts` makes every query with `.retry(false)` and the caller's abort signal. `health.ts` has `checkDatabase` (one shared 12 s deadline for read, insert and re-read; typed error codes) and `singleflight`. `dbCheck.ts` is `startDbCheck`.
+    - `src/platform`: time zone and online adapters.
+    - UI: `DbStatusBadge` (fixed copy per code, `role="status"`, no URLs), `RootErrorBoundary`, and `App` (React 19 `use()` under `Suspense`; "Check again" runs as a transition; no `useEffect`).
+    - `vite.config.ts` refuses a production build (`REQUIRE_SUPABASE_ENV=1` or `VERCEL_ENV=production`) with an invalid env, naming only the variable. It stamps `<meta name="build-sha">` (`dev` unless `VITE_BUILD_SHA` is a SHA).
+    - Manual checks: M1 ("DB connected") passed in Chrome. M2 passed: the first load created the **settings row with `timezone=Asia/Tokyo`** (the browser's zone), and a reload showed "found". M3 passed: an unconfigured build shows "Database not configured" with no console errors.
+    - 705 unit tests; CI green.
+    - Details and deviations are in `docs/phases/phase-0/DEVLOG.md`. Among them: the ESLint server-import rule now allows `react-dom/server`.
+  - WP7 to WP9: not started.
+- **Resume with:** `resumeFrom: "implement"`, `skipWPs: ["WP1", "WP2", "WP3", "WP4", "WP5", "WP6"]`
 - **IDs:** tracking issue #1, draft PR #2 (`phase-0-foundation` → `main`, `Closes #1`), ruleset: none yet (WP8).
 - **Pipeline for Phase 0:** `.claude/workflows/phase-pipeline.js`, with args in `docs/phases/phase-0/pipeline-args.json`
 - **Cloud resources created so far:**
   - Supabase project `structured` in ap-south-1, organization "Karthi labs" (it uses the second and last free slot). Its URL, ref, keys and database password are only in `.env.local` on the machine that ran WP5 (never in the repo).
   - The Vercel project is created in WP7. WP7 also stores the Supabase keys in the Vercel development env, so that `vercel env pull` can restore `.env.local` on another machine.
 - **Already set up:** GitHub repo, `VERCEL_TOKEN` repo secret (Vercel scope "Karthi Labs"), Supabase org "Karthi labs".
-- **Next:** WP6: the typed Supabase client, the health check and the "DB connected" home page. Its first real browser load creates the `settings` row with the browser's time zone (the row is still missing on purpose; integration tests never write it). The opening ritual now includes `npm run db:ping` (must print `db: ok (200)`). Then WP7 to WP9, QA rounds, final verification and Ship. After Phase 0, Phase 1 runs the **team workflow**: `docs/process/TEAM_WORKFLOW.md`, `.claude/workflows/team-pipeline.js`, and `docs/phases/phase-1/pipeline-args.json`.
+- **Next:** WP7 covers the Vercel project, its env vars, `vercel.json`, `scripts/ci/deploy-prod.sh` plus the smoke check, `deploy.yml`, and the first production deploy. The production build must pass the WP6 guard, so the `VITE_*` variables must be **Config** (not sensitive) in Vercel production.
+  - The `settings` row already exists (`Asia/Tokyo`, created by Chrome in WP6). Any test that deletes it must let a real browser on the owner's machine recreate it, never a headless one.
+  - The opening ritual includes `npm run db:ping` (must print `db: ok (200)`).
+  - After WP7: WP8 and WP9, the QA rounds, final verification and Ship. After Phase 0, Phase 1 runs the **team workflow**: `docs/process/TEAM_WORKFLOW.md`, `.claude/workflows/team-pipeline.js`, and `docs/phases/phase-1/pipeline-args.json`.
 - **Blockers:** none.
 - **Until WP7 is done, `.env.local` exists on one machine only.** If you must switch machines before WP7, copy `.env.local` over a private channel (never git, chat or issues), or on the new machine run `npx supabase login`, then `npm run db:setup` (it adopts the existing project, but needs `SUPABASE_DB_PASSWORD`: reset it in the dashboard under Project settings, Database, and put it into `.env.local` first), then `npm run db:link`.
 - **Notes:**
@@ -31,6 +42,7 @@
   - The owner's commit `28df4fd` (balanced team-pipeline profile) landed after the plan baseline `1195168`; WP2 kept its `CLAUDE.md` paragraph verbatim (see DEVLOG WP1 and WP2).
   - Local gate: `npm run verify` (typecheck, lint, format:check, test:coverage, build, and `npm run check`). Run `npm run check:commits` and `npm run check:leaks` before every push; run `node scripts/checks/commits.mjs --text-file <file>` on any PR, issue or release text before `gh … create/edit`.
   - CI: `CI / ci-verify` runs on every push and PR. The `main` ruleset (WP8) will require it; never rename the job or add path filters.
+  - A local `npm run build` with `.env.local` present bundles the real Supabase URL and publishable key into `dist/`. `dist/` is gitignored; never commit, upload or paste it. CI builds are unconfigured by design, and show "Database not configured".
   - All date and time logic goes through `src/core/dates.ts` (ESLint blocks reading the clock anywhere else). The coverage thresholds for `src/core` are enforced by `npm run test:coverage` (part of `verify` and CI).
 - **Optional before Phase 1:** run `gh auth refresh -s project` so the pipeline can maintain a GitHub Project board.
 
