@@ -3,7 +3,7 @@
 // the device's time zone.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { DEFAULT_SETTINGS, type Settings, type SettingsPatch } from '@/core/settings'
-import { settingsKey } from '@/data/queries/keys'
+import { settingsKey, settingsMutationKey } from '@/data/queries/keys'
 import { settings } from '@/data/queries/repos'
 import { detectTimeZone } from '@/platform/timezone'
 import { notify } from '@/stores/notices'
@@ -24,6 +24,7 @@ export function useAppSettings(): Settings {
 export function useUpdateSettings() {
   const qc = useQueryClient()
   const mutation = useMutation({
+    mutationKey: settingsMutationKey,
     mutationFn: (patch: SettingsPatch) => settings().update(patch),
     onMutate: async (patch) => {
       await qc.cancelQueries({ queryKey: settingsKey })
@@ -31,11 +32,24 @@ export function useUpdateSettings() {
       if (previous) qc.setQueryData<Settings>(settingsKey, { ...previous, ...patch })
       return previous
     },
-    onError: (_error, _patch, previous) => {
-      qc.setQueryData(settingsKey, previous)
+    onError: (_error, patch, previous) => {
+      // Restore only the fields this write changed, so a newer pending write survives.
+      if (previous) {
+        const restored = Object.fromEntries(
+          Object.keys(patch).map((k) => [k, previous[k as keyof Settings]]),
+        ) as Partial<Settings>
+        qc.setQueryData<Settings>(settingsKey, (current) =>
+          current ? { ...current, ...restored } : previous,
+        )
+      }
       notify('Could not save the setting. It was undone.')
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: settingsKey }),
+    // Refetch once the last pending settings write settles (no mid-edit overwrites).
+    onSettled: async () => {
+      if (qc.isMutating({ mutationKey: settingsMutationKey }) <= 1) {
+        await qc.invalidateQueries({ queryKey: settingsKey })
+      }
+    },
   })
   return (patch: SettingsPatch) => mutation.mutate(patch)
 }

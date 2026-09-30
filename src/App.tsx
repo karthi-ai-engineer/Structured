@@ -1,46 +1,70 @@
-import { Suspense, use, useState, useTransition } from 'react'
-import { LoaderCircle } from 'lucide-react'
-import { DbStatusBadge } from '@/components/DbStatusBadge'
-import { Button } from '@/components/ui/button'
+import { useEffect, useState } from 'react'
+import { QueryClientProvider, useIsMutating, useQueryClient } from '@tanstack/react-query'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
+import { Notices } from '@/components/Notices'
 import { startDbCheck } from '@/data/dbCheck'
-import type { DbStatus } from '@/data/health'
+import { createQueryClient } from '@/data/queries/client'
+import { settingsKey } from '@/data/queries/keys'
+import { isDbConfigured } from '@/data/queries/repos'
+import { useRealtimeSync } from '@/data/queries/realtime'
+import { EditorProvider } from '@/features/editor/EditorProvider'
+import { InboxView } from '@/features/inbox/InboxView'
+import { SettingsView } from '@/features/settings/SettingsView'
+import { ThemeSync } from '@/features/settings/ThemeSync'
+import { AppShell } from '@/features/shell/AppShell'
+import { DayView } from '@/features/timeline/DayView'
 import { isOnline } from '@/platform/network'
 import { detectTimeZone } from '@/platform/timezone'
+import { guardUnload } from '@/platform/unload'
 
-function runDbCheck(): Promise<DbStatus> {
-  return startDbCheck({ timezone: detectTimeZone(), online: isOnline() })
+/** Live sync, the unsaved-changes guard, and the first-load check that creates the settings row
+ *  on a fresh database. */
+function Background() {
+  const qc = useQueryClient()
+  const saving = useIsMutating() > 0
+  useRealtimeSync()
+  useEffect(() => guardUnload(saving), [saving])
+  useEffect(() => {
+    if (!isDbConfigured) return
+    void startDbCheck({ timezone: detectTimeZone(), online: isOnline() }).then(() =>
+      qc.invalidateQueries({ queryKey: settingsKey }),
+    )
+  }, [qc])
+  return null
 }
 
-function DbStatusView({ promise }: { promise: Promise<DbStatus> }) {
-  return <DbStatusBadge status={use(promise)} />
+/** The routes, without a router, so tests can wrap them in a MemoryRouter. */
+export function AppRoutes() {
+  return (
+    <EditorProvider>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={<DayView />} />
+          <Route path="day/:date" element={<DayView />} />
+          <Route path="inbox" element={<InboxView />} />
+          <Route path="settings" element={<SettingsView />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </EditorProvider>
+  )
 }
 
 export function App() {
-  // The promise lives in App's state (App never suspends, so the state survives). The first
-  // check starts in the initializer; StrictMode's second call joins it (singleflight).
-  const [status, setStatus] = useState(runDbCheck)
-  // "Check again" runs as a transition: the current badge stays until the new result arrives.
-  const [isPending, startTransition] = useTransition()
-
+  const [queryClient] = useState(createQueryClient)
   return (
-    <main className="mx-auto flex min-h-svh max-w-md flex-col items-center justify-center gap-6 p-6">
-      <h1 className="text-3xl font-semibold tracking-tight">Structured</h1>
-      <Suspense fallback={<DbStatusBadge status={{ state: 'checking' }} />}>
-        <DbStatusView promise={status} />
-      </Suspense>
-      <Button
-        size="lg"
-        variant="outline"
-        className="min-h-11"
-        disabled={isPending}
-        aria-busy={isPending}
-        onClick={() => startTransition(() => setStatus(runDbCheck()))}
-      >
-        {isPending ? (
-          <LoaderCircle data-icon="inline-start" className="motion-safe:animate-spin" />
-        ) : null}
-        Check again
-      </Button>
-    </main>
+    <QueryClientProvider client={queryClient}>
+      <ThemeSync />
+      <Background />
+      {isDbConfigured ? null : (
+        <p role="alert" className="bg-amber-100 px-4 py-2 text-center text-sm text-amber-900">
+          Database not configured: add .env.local (see README).
+        </p>
+      )}
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+      <Notices />
+    </QueryClientProvider>
   )
 }

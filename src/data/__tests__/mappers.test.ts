@@ -6,6 +6,8 @@ import {
   rowToTask,
   settingsPatchToUpdate,
   toHHmm,
+  toSafeTimeZone,
+  toStartTime,
   type SettingsRow,
   type TaskRow,
 } from '@/data/mappers'
@@ -100,6 +102,23 @@ describe('task mapping', () => {
   it('trims times', () => {
     expect(toHHmm('22:00:00')).toBe('22:00')
     expect(toHHmm(null)).toBeNull()
+  })
+})
+
+describe('sanitizing stored values', () => {
+  it('drops start times the timeline cannot place', () => {
+    expect(toStartTime('09:15:00')).toBe('09:15')
+    expect(toStartTime('24:00:00')).toBeNull()
+    expect(toStartTime('7am')).toBeNull()
+    expect(toStartTime(null)).toBeNull()
+    expect(rowToTask({ ...row, start_time: '24:00:00' }).startTime).toBeNull()
+  })
+
+  it('replaces an unusable time zone with the device zone', () => {
+    expect(toSafeTimeZone('Asia/Kolkata')).toBe('Asia/Kolkata')
+    // The unit tests run in America/St_Johns (vitest.config.ts).
+    expect(toSafeTimeZone('+05:30')).toBe('America/St_Johns')
+    expect(toSafeTimeZone('Mars/Base')).toBe('America/St_Johns')
   })
 })
 
