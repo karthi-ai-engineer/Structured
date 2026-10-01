@@ -79,6 +79,7 @@ export const SHARED_FIELDS = [
   'isAllDay',
   'energy',
   'alerts',
+  'priority',
 ] as const satisfies readonly (keyof TaskDraft)[]
 
 export function sharedPatch(patch: TaskPatch): TaskPatch {

@@ -28,6 +28,8 @@ function task(id: string, extra: Partial<Task> = {}): Task {
     updatedAt: '2026-09-01T00:00:00Z',
     energy: null,
     alerts: null,
+    priority: null,
+    dueDate: null,
     recurrence: null,
     ...extra,
   }

@@ -4,9 +4,9 @@
  */
 
 import { toAlerts } from './alerts.ts'
-import { isTime } from './dates.ts'
+import { isISODate, isTime } from './dates.ts'
 import { toEnergyLevel } from './energy.ts'
-import { DEFAULT_TASK_COLOR, isTaskColor, parseSubtasks, type Task } from './tasks.ts'
+import { DEFAULT_TASK_COLOR, isTaskColor, parseSubtasks, toPriority, type Task } from './tasks.ts'
 
 /** The columns of a `tasks` row this mapping reads (a subset of the generated row type). */
 export interface TaskRowShape {
@@ -26,6 +26,8 @@ export interface TaskRowShape {
   updated_at: string
   energy?: number | null
   alerts?: number[] | null
+  priority?: number | null
+  due_date?: string | null
 }
 
 /** 'HH:mm:ss' or 'HH:mm' to 'HH:mm'; null stays null. */
@@ -59,5 +61,7 @@ export function taskFromRow(row: TaskRowShape): Task {
     recurrence: null,
     energy: toEnergyLevel(row.energy),
     alerts: toAlerts(row.alerts),
+    priority: toPriority(row.priority),
+    dueDate: row.due_date && isISODate(row.due_date) ? row.due_date : null,
   }
 }

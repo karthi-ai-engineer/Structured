@@ -35,6 +35,8 @@ function task(overrides: Partial<Task> = {}): Task {
     isAllDay: false,
     energy: null,
     alerts: null,
+    priority: null,
+    dueDate: null,
     completedAt: null,
     inboxOrder: 0,
     createdAt: '2026-09-30T00:00:00.000Z',
@@ -56,6 +58,8 @@ const draft: TaskDraft = {
   isAllDay: false,
   energy: null,
   alerts: null,
+  priority: null,
+  dueDate: null,
 }
 
 describe('colors', () => {
@@ -272,6 +276,8 @@ describe('belongsTo: ranges and the overdue list', () => {
       date: '2026-09-30',
       energy: null,
       alerts: null,
+      priority: null,
+      dueDate: null,
       recurrence: {
         seriesId: 's',
         occurrenceDate: '2026-09-30',
