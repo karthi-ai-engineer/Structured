@@ -117,6 +117,8 @@ export function TaskRow({
             <span
               aria-hidden="true"
               title="Drag to change the duration"
+              // Covers the bottom of the pill: a plain click there still opens the task.
+              onClick={() => onOpen(task)}
               {...resize.bind}
               className="absolute inset-x-1 -bottom-1 flex h-4 cursor-ns-resize touch-pan-y justify-center select-none"
             >

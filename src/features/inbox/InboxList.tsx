@@ -69,11 +69,7 @@ export function InboxList() {
                 key={task.id}
                 // Desktop: drag onto free time (or an empty day) in the timeline to schedule it.
                 draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData('text/plain', task.title)
-                  e.dataTransfer.effectAllowed = 'move'
-                  taskDrag.start(task)
-                }}
+                onDragStart={(e) => taskDrag.start(task, e.dataTransfer)}
                 onDragEnd={() => taskDrag.end()}
                 className="flex items-center gap-2 rounded-xl pl-2 hover:bg-muted/50"
               >

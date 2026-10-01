@@ -10,6 +10,7 @@ const TOUCH_SLOP_PX = 8
 
 interface DragState {
   pointerId: number
+  startX: number
   startY: number
   active: boolean
   timer: ReturnType<typeof setTimeout> | null
@@ -18,7 +19,8 @@ interface DragState {
 /**
  * A vertical drag on one element, in minutes. Mouse and pen drags start after a few pixels;
  * touch drags after a long press (scrolling is blocked only once the drag has started). The
- * click that ends a drag is swallowed, so dragging never also opens the task.
+ * click that ends a drag is swallowed, so dragging never also opens the task; the next press
+ * clears that, because a touch drag usually ends without any click.
  */
 export function useVerticalDrag(onDone: (minutes: number) => void) {
   const [minutes, setMinutes] = useState<number | null>(null)
@@ -66,8 +68,15 @@ export function useVerticalDrag(onDone: (minutes: number) => void) {
       onPointerDown: (e: PointerEvent<HTMLElement>) => {
         if (e.pointerType === 'mouse' && e.button !== 0) return
         reset()
+        swallowClick.current = false
         const target = e.currentTarget
-        state.current = { pointerId: e.pointerId, startY: e.clientY, active: false, timer: null }
+        state.current = {
+          pointerId: e.pointerId,
+          startX: e.clientX,
+          startY: e.clientY,
+          active: false,
+          timer: null,
+        }
         if (e.pointerType === 'touch') {
           state.current.timer = setTimeout(() => activate(target), LONG_PRESS_MS)
         } else {
@@ -86,7 +95,8 @@ export function useVerticalDrag(onDone: (minutes: number) => void) {
         const dy = e.clientY - s.startY
         if (!s.active) {
           if (e.pointerType === 'touch') {
-            if (Math.abs(dy) > TOUCH_SLOP_PX) reset() // a scroll, not a long press
+            // Any finger movement before the long press is a scroll or a swipe, not a drag.
+            if (Math.hypot(e.clientX - s.startX, dy) > TOUCH_SLOP_PX) reset()
           } else if (Math.abs(dy) > MOUSE_THRESHOLD_PX) {
             activate(e.currentTarget)
           }
@@ -104,6 +114,11 @@ export function useVerticalDrag(onDone: (minutes: number) => void) {
         reset()
       },
       onPointerCancel: reset,
+      // Capture is lost without a pointerup when the row moves in the DOM (a refetch reorders
+      // the timeline): end the drag without saving instead of leaving it stuck.
+      onLostPointerCapture: (e: PointerEvent<HTMLElement>) => {
+        if (state.current?.pointerId === e.pointerId && state.current.active) reset()
+      },
       onClickCapture: (e: MouseEvent<HTMLElement>) => {
         if (!swallowClick.current) return
         swallowClick.current = false

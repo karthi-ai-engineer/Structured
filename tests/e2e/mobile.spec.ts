@@ -75,4 +75,9 @@ test('phone: long-press and drag moves a task; a quick swipe does not', async ({
   await moved
   await expect(row).toContainText(/10:45/)
   await expect(dialog).toHaveCount(0) // the drag did not also open the editor
+
+  // A touch drag ends without a click: the next tap must still open the task.
+  await pill.tap()
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByLabel('Title')).toHaveValue(title)
 })
