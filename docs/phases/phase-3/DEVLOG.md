@@ -152,3 +152,34 @@
 - **"Today" on an all-day task:** it moves only the date, with no stray start time.
 - **The month grid:** a plain section of links instead of grid roles that promised arrow-key cell navigation.
 
+## WP4: Energy monitor, focus mode and alerts (2026-10-01)
+
+### What was done
+- **Energy (E1):**
+  - Each task has a level: 🪷 relaxing (−1), ⭕ neutral, 🔥 to 🔥🔥🔥 (1 to 3).
+  - Points are level × started half hours (`src/core/energy.ts`).
+  - A green, orange or red chip shows used / limit in the day header and on each day of the week view.
+  - Settings: on or off, and the daily limit.
+  - MCP: `energy` on create and update (undoable), `energy {used, limit}` per day in `get_schedule`, and a warning when a plan goes over the limit.
+- **Focus (F1, F2):** `/focus/:id` is a full-screen timer with a progress ring.
+  - The intervals (default 25/5) fit the time the task has left.
+  - Pause and resume, skip, and mark done; Space pauses and Esc leaves.
+  - Each finished segment is logged to `focus_sessions`.
+  - Start it from the editor (timed tasks) or from the running task's timer button on the timeline.
+- **Alerts (N1, N2):**
+  - Per task: at the start, N minutes before, and at the end. The settings hold the defaults.
+  - While the app is open, a desktop notification (after "Turn on" in Settings) or an in-app notice.
+- **Database:** `0006` makes the series functions carry `energy` and `alerts`. `0007` keeps an empty alert list empty in `update_series`; 0006 turned it into null by mistake, and an applied migration is never edited.
+
+### Commands run
+- `npm run db:push`, then `npm run db:types` (no type change) and `npm run db:migrations`
+- `npm run verify`: 974 tests; `src/core` coverage 99.4 / 96.6 / 100 / 99.8 %
+- `npm run test:e2e`: 15 of 15, including the new `focus.spec.ts`. On Playwright's fake clock it covers:
+  - the energy chip
+  - the alert at the start, fired as an in-app notice
+  - focus: the interval count, pause holding the timer, the break, skip break, and mark done
+
+### Notes for testers
+- **Alerts only fire while the app is open.** Background push needs a service worker and is planned with the PWA work in WP6.
+- **The e2e cleanup** also deletes focus sessions logged against `__test__` tasks.
+
