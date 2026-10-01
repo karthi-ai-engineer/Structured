@@ -199,3 +199,27 @@
 - **A 0-minute task with alerts at both its start and end:** it now says "starts now" (the start wins the shared minute).
 - **Accepted:** after a pause, logged segment start times shift by the pause; the lengths stay right.
 
+## WP5: Quick add, suggestions, search, undo, duplicate, priority and due date (2026-10-01)
+
+### What was done
+- **Quick add (T15):** `src/core/quickadd.ts` is a small deterministic parser (no new dependency).
+  - Dates: today, tomorrow, weekdays, "next friday", "in 3 days", "oct 5", ISO dates.
+  - Times: 7am, 19:00, "at 7", noon. Durations: 45m, 1h30, 1.5h.
+  - Priority `!high`/`!1` and energy `~2`.
+  - The editor shows what it recognised as chips and applies it on blur and on save. The inbox quick add uses it too, and says where the task went.
+- **Suggestions (T16):** `src/core/suggest.ts`, a keyword map of about 40 groups onto the app's icons and colors; the latest task with the same title wins.
+- **Search (T17):** `/search`, also in the sidebar and tabs, over titles and notes. Repeating series show their next occurrence. The pattern escaping (`src/core/search.ts`) is shared with the MCP server.
+- **Undo snackbar (T19):** for delete (`restore` brings back a soft delete, and a cancelled occurrence gets its override back), completion, and moves (drag, resize, Replan, scheduling from the inbox).
+- **Duplicate (T22):** the copy opens in the editor right away, so it can go to another day.
+- **Priority and due date (T20):**
+  - Editor chips and a due date; a flag and a "Due …" badge (red when overdue) on the timeline, week and inbox.
+  - MCP `priority`/`due_date` on create and update (undoable).
+  - `0008` makes series carry priority.
+
+### Commands run
+- `npm run db:push` (0008), `npm run verify` (991 tests), `npm run test:integration` (15), `npm run test:e2e` (16)
+
+### Deviations and fixes found on the way
+- **The Phase 2 MCP live test** expected a day's schedule to hold only its own tasks. Since WP1, the seeded daily defaults show on every day, so it now looks at `__test__` tasks only. It was broken from WP1 until now: the suite is opt-in and was not rerun after WP1.
+- **e2e:** `getByLabel('Date')` also matched the new "Due date" field; the e2e tests now match it exactly.
+

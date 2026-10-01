@@ -149,6 +149,11 @@ Enforced by ESLint (`eslint.config.js`, run by `npm run lint`) and, for `src/cor
   - `src/core/alerts.ts`: minutes before the start, with `-1` meaning at the end; `null` follows `settings.default_alerts`. `features/alerts/useAlertScheduler` fires them while the app is open: a desktop notification when allowed (`platform/notifications.ts`), otherwise an in-app notice.
   - `src/core/focus.ts` plans the intervals (`settings.focus_minutes` / `break_minutes`). `/focus/:id` is the timer, and it logs each segment to `focus_sessions`; an occurrence logs its series id.
   - The focus timer reads milliseconds through `nowMs()` in `dates.ts` (the only module that reads the clock).
+- **Quick add, search, undo (Phase 3):**
+  - `src/core/quickadd.ts` parses "Gym tomorrow 7am 1h !high ~2"; `features/editor/quickAddDraft.ts` applies the result to a draft. The editor previews it as chips and applies it on blur and on save; the inbox quick add uses it too.
+  - `src/core/suggest.ts`: the latest task with the same title wins, otherwise a keyword map. A new task's icon and color follow its title until one is picked by hand.
+  - `src/core/search.ts` (`searchPattern`) is shared with the MCP server. `TasksRepo.search` returns one-off tasks plus each matching series' next occurrence.
+  - Undo: `notify(message, { label, run })`. `useTaskActions` offers it for delete (`restore`), completion, and moves passed `{ undo }` (drag, Replan, scheduling).
 - **Calendar (Phase 3):**
   - `features/calendar` holds the week, month and Replan views, and the Day / Week / Month switch.
   - Their lists are cached as `['tasks', 'range', from, to]` and `['tasks', 'overdue', today]` (`listOfKey`, `belongsTo`), so every optimistic write reaches them.
