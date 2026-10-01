@@ -65,8 +65,8 @@ describe('scopes', () => {
     expect(changesOf(occ, draftOf(occ), DAILY)).toEqual({ date: false, rule: false, until: false })
     expect(scopesFor(occ, draftOf(occ, { title: 'Run' }), DAILY)).toEqual(['this', 'future', 'all'])
   })
-  it('a moved occurrence: this one, or this and future (never all)', () => {
-    expect(scopesFor(occ, draftOf(occ, { date: '2026-10-06' }), DAILY)).toEqual(['this', 'future'])
+  it('a moved occurrence: this one only (moving the series is a rule change)', () => {
+    expect(scopesFor(occ, draftOf(occ, { date: '2026-10-06' }), DAILY)).toEqual(['this'])
   })
   it('a new rule, or turning the repeat off, applies from here on', () => {
     const weekly = { rule: rule('FREQ=WEEKLY;BYDAY=MO'), until: null }
@@ -152,14 +152,14 @@ describe('planEdit: this and all', () => {
 })
 
 describe('planEdit: this and future', () => {
-  it('splits at the occurrence and starts a new series with an undone template', () => {
+  it('splits at the occurrence, keeps its own override, and starts an undone template', () => {
     const occ = occurrence('2026-10-05', { completedAt: '2026-10-05T08:00:00Z' })
     const plan = planEdit(occ, draftOf(occ, { startTime: '06:30' }), DAILY, 'future', NEW_ID)
     expect(plan).toEqual({
       kind: 'split',
       seriesId: SERIES,
       from: '2026-10-05',
-      shift: 0,
+      keep: '2026-10-05',
       next: {
         id: NEW_ID,
         draft: draftOf(occ, {
@@ -172,34 +172,33 @@ describe('planEdit: this and future', () => {
     })
   })
 
-  it('moving a weekly occurrence a day later moves the weekday too', () => {
-    // Mondays from 2026-10-05; the 12th moves to Tuesday the 13th.
+  it('a new weekday from a moved occurrence: the new series starts on the picked day', () => {
+    // Mondays from 2026-10-05; the 12th moves to Tuesday the 13th with "every week on Tuesday".
     const mondays = rule('FREQ=WEEKLY;BYDAY=MO')
+    const tuesdays = { rule: rule('FREQ=WEEKLY;BYDAY=TU'), until: null }
     const occ = occurrence('2026-10-12', {}, { rule: mondays, start: '2026-10-05' })
-    const plan = planEdit(
-      occ,
-      draftOf(occ, { date: '2026-10-13' }),
-      { rule: mondays, until: null },
-      'future',
-      NEW_ID,
-    )
-    expect(plan).toMatchObject({
+    expect(scopesFor(occ, draftOf(occ, { date: '2026-10-13' }), tuesdays)).toEqual(['future'])
+    expect(
+      planEdit(occ, draftOf(occ, { date: '2026-10-13' }), tuesdays, 'future', NEW_ID),
+    ).toMatchObject({
       kind: 'split',
       from: '2026-10-12',
-      shift: 1,
-      next: { draft: { date: '2026-10-13' }, repeat: { rule: { weekdays: [2] } } },
+      keep: null,
+      next: { draft: { date: '2026-10-13' }, repeat: tuesdays },
     })
   })
 
-  it('moved earlier: the split starts at the new date', () => {
+  it('moved earlier with a new rule: the split starts at the new date', () => {
     const occ = occurrence('2026-10-05')
-    const plan = planEdit(occ, draftOf(occ, { date: '2026-10-03' }), DAILY, 'future', NEW_ID)
-    expect(plan).toMatchObject({ kind: 'split', from: '2026-10-03', shift: -2 })
+    const weekly = { rule: rule('FREQ=WEEKLY;BYDAY=SA'), until: null }
+    expect(
+      planEdit(occ, draftOf(occ, { date: '2026-10-03' }), weekly, 'future', NEW_ID),
+    ).toMatchObject({ kind: 'split', from: '2026-10-03', keep: null })
   })
 
-  it('an occurrence moved on its own keeps the series on its days', () => {
+  it('an occurrence moved on its own stays where it was put, and the pattern continues', () => {
     // Monthly on the 5th; Oct 5 was moved to Oct 6 on its own. Renaming it from here on keeps
-    // the 5th (the series is anchored at the occurrence's own slot, not its moved date).
+    // the series on the 5th and keeps this occurrence's override (on the 6th, renamed).
     const monthly = rule('FREQ=MONTHLY')
     const occ = occurrence(
       '2026-10-05',
@@ -213,8 +212,12 @@ describe('planEdit: this and future', () => {
       'future',
       NEW_ID,
     )
-    expect(plan).toMatchObject({ kind: 'split', from: '2026-10-05', shift: 0 })
-    expect(plan.kind === 'split' && plan.next?.draft.date).toBe('2026-10-05')
+    expect(plan).toMatchObject({
+      kind: 'split',
+      from: '2026-10-05',
+      keep: '2026-10-05',
+      next: { draft: { date: '2026-10-05', title: 'Rent' } },
+    })
   })
 
   it('a new rule starts at this occurrence (monthly "on the 15th" from Oct 15)', () => {
@@ -232,6 +235,7 @@ describe('planEdit: this and future', () => {
     expect(planEdit(occ, draftOf(occ), null, 'future', NEW_ID)).toMatchObject({
       kind: 'split',
       from: '2026-10-05',
+      keep: null,
       next: { repeat: null, completedAt: 'x', draft: { subtasks: occ.subtasks } },
     })
   })
@@ -294,7 +298,7 @@ describe('planDelete', () => {
       kind: 'split',
       seriesId: SERIES,
       from: '2026-10-05',
-      shift: 0,
+      keep: null,
       next: null,
     })
     expect(planDelete(occ, 'all')).toEqual({ kind: 'remove-series', seriesId: SERIES })

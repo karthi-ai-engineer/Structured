@@ -3,20 +3,22 @@
  * data layer executes the returned plan.
  *
  * - `this`:   an override for this occurrence (or a cancelled one, for a delete).
- * - `future`: the series ends before this occurrence, and a new series starts here with the
- *             edited values (or a one-off task, when repeating was turned off). From the first
+ * - `future`: the series ends before this occurrence, and a new series continues with the edited
+ *             values (or a one-off task, when repeating was turned off). From the first
  *             occurrence it rewrites the whole series instead.
- * - `all`:    the edited fields (and the end date) for the whole series. Dates and rules never
- *             change retroactively: those edits are offered as `future` only, so the history
- *             before the edited occurrence stays as it was.
+ * - `all`:    the edited fields (and the end date) for the whole series.
  *
- * Moving an occurrence by N days in a `future` edit moves the new series by N days too (weekly
- * rules shift their weekdays). Only fields the user actually changed reach occurrences that have
- * their own values; completed ones keep their completion.
+ * Rules that keep history and dates unambiguous:
+ * - Moving one occurrence to another day is always `this` only. Moving the series itself is a
+ *   rule change ("every week on Tuesday"), and a rule change applies from here on (`future`),
+ *   starting on the date the user picked.
+ * - Only fields the user actually changed reach occurrences that have their own values.
+ * - Completed occurrences stay completed. A split moves them to the new series, along with this
+ *   occurrence's own changes (so a moved occurrence stays where it was put).
  */
 
-import { addDays, diffDays, type ISODate } from './dates.ts'
-import { sameRule, shiftWeekdays, type RepeatRule } from './recurrence.ts'
+import type { ISODate } from './dates.ts'
+import { sameRule, type RepeatRule } from './recurrence.ts'
 import { applyPatch, type Subtask, type Task, type TaskDraft, type TaskPatch } from './tasks.ts'
 
 export type EditScope = 'this' | 'future' | 'all'
@@ -49,8 +51,17 @@ export type SeriesWrite =
       reset: boolean
       repeat?: RepeatSpec | null
     }
-  /** Ends the series before `from`; completed overrides move to `next`, shifted by `shift` days. */
-  | { kind: 'split'; seriesId: string; from: ISODate; shift: number; next: NextTask | null }
+  /**
+   * Ends the series before `from` and continues with `next`. Completed overrides from `from` on,
+   * and the override of the occurrence on `keep`, move to `next` (a new series) with its values.
+   */
+  | {
+      kind: 'split'
+      seriesId: string
+      from: ISODate
+      keep: ISODate | null
+      next: NextTask | null
+    }
   | { kind: 'remove-series'; seriesId: string }
 
 /** The fields an edit carries over to occurrences that already have their own values. Dates,
@@ -98,7 +109,7 @@ export function changesOf(task: Task, draft: TaskDraft, repeat: RepeatSpec | nul
 export function scopesFor(task: Task, draft: TaskDraft, repeat: RepeatSpec | null): EditScope[] {
   const c = changesOf(task, draft, repeat)
   if (c.rule || (c.date && c.until)) return ['future']
-  if (c.date) return ['this', 'future']
+  if (c.date) return ['this']
   if (c.until) return ['all']
   return ['this', 'future', 'all']
 }
@@ -160,42 +171,33 @@ export function planEdit(
       kind: 'split',
       seriesId: r.seriesId,
       from: r.occurrenceDate,
-      shift: 0,
+      keep: null,
       next: { id: newId, draft, repeat: null, completedAt: task.completedAt },
     }
   }
 
-  // A move by N days moves the new series by N days, counted from this occurrence's own slot.
-  const shift = draft.date !== null && task.date !== null ? diffDays(draft.date, task.date) : 0
-  const anchor = addDays(r.occurrenceDate, shift)
-  const spec: RepeatSpec = {
-    rule: c.rule ? repeat.rule : shiftWeekdays(repeat.rule, shift),
-    until: repeat.until,
-  }
-  const from = anchor < r.occurrenceDate ? anchor : r.occurrenceDate
+  // A new series: on the date the user picked (with a new rule), or on this occurrence's own
+  // slot, so the pattern continues (with the same rule).
+  const start = c.date && draft.date !== null ? draft.date : r.occurrenceDate
+  const from = start < r.occurrenceDate ? start : r.occurrenceDate
   if (from <= r.start) {
     // From the first occurrence: the whole series changes.
-    const reset = c.rule || shift !== 0
+    const reset = c.rule || c.date
     return {
       kind: 'series',
       seriesId: r.seriesId,
-      patch: reset ? { ...template(draft), date: anchor } : changed,
+      patch: reset ? { ...template(draft), date: start } : changed,
       shared: reset ? {} : sharedPatch(changed),
       reset,
-      ...(reset || c.until ? { repeat: spec } : {}),
+      ...(reset || c.until ? { repeat } : {}),
     }
   }
   return {
     kind: 'split',
     seriesId: r.seriesId,
     from,
-    shift,
-    next: {
-      id: newId,
-      draft: { ...template(draft), date: anchor },
-      repeat: spec,
-      completedAt: null,
-    },
+    keep: c.date ? null : r.occurrenceDate,
+    next: { id: newId, draft: { ...template(draft), date: start }, repeat, completedAt: null },
   }
 }
 
@@ -203,7 +205,7 @@ export function planDelete(task: Task, scope: EditScope): SeriesWrite {
   const r = recurrenceOf(task)
   if (scope === 'this') return { kind: 'cancel', task }
   if (scope === 'future' && r.occurrenceDate > r.start) {
-    return { kind: 'split', seriesId: r.seriesId, from: r.occurrenceDate, shift: 0, next: null }
+    return { kind: 'split', seriesId: r.seriesId, from: r.occurrenceDate, keep: null, next: null }
   }
   return { kind: 'remove-series', seriesId: r.seriesId }
 }

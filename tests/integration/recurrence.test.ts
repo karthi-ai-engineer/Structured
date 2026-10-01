@@ -174,21 +174,21 @@ describe('recurring tasks (real project)', () => {
         kind: 'split',
         seriesId: nextId,
         from: '2099-02-06',
-        shift: 0,
+        keep: null,
         next: null,
       }),
     ).rejects.toBeInstanceOf(DataError)
     expect(await day('2099-02-08')).toHaveLength(1)
   })
 
-  it('moves a weekly series with its completed occurrence ("this and future", a day later)', async () => {
+  it('moves a weekly series to another weekday from here on (a rule change)', async () => {
     const seriesId = randomUUID()
     const nextId = randomUUID()
     created.push(seriesId, nextId)
     const title = `${PREFIX} weekly ${seriesId.slice(0, 8)}`
     const mondays = parseRule('FREQ=WEEKLY;BYDAY=MO')
-    if (!mondays) throw new Error('rule')
-    const weekly: RepeatSpec = { rule: mondays, until: null }
+    const tuesdays = parseRule('FREQ=WEEKLY;BYDAY=TU')
+    if (!mondays || !tuesdays) throw new Error('rule')
     await repo.create(
       seriesId,
       {
@@ -202,32 +202,79 @@ describe('recurring tasks (real project)', () => {
         durationMin: 45,
         isAllDay: false,
       },
-      weekly,
+      { rule: mondays, until: null },
     )
     const on = async (date: string) =>
       (await repo.listDay(date)).filter((t) => t.title.startsWith(PREFIX))
 
-    // Complete Monday the 9th, then move it to Tuesday the 10th for this and future.
+    // Monday the 9th is done. Then Monday the 16th moves to Tuesday the 17th "every week on
+    // Tuesday" from here on.
     const [ninth] = await on('2099-03-09')
     if (!ninth) throw new Error('no occurrence on the 9th')
     await repo.applySeriesWrite({
       kind: 'occurrence',
       task: { ...ninth, completedAt: '2099-03-09T19:00:00.000Z' },
     })
-    const [done] = await on('2099-03-09')
-    if (!done) throw new Error('no completed occurrence')
+    const [sixteenth] = await on('2099-03-16')
+    if (!sixteenth) throw new Error('no occurrence on the 16th')
     await repo.applySeriesWrite(
-      planEdit(done, draftOf(done, { date: '2099-03-10' }), weekly, 'future', nextId),
+      planEdit(
+        sixteenth,
+        draftOf(sixteenth, { date: '2099-03-17' }),
+        { rule: tuesdays, until: null },
+        'future',
+        nextId,
+      ),
     )
 
     expect(await on('2099-03-02')).toHaveLength(1) // history stays on Monday
-    expect(await on('2099-03-09')).toEqual([])
-    expect(await on('2099-03-10')).toMatchObject([
-      { id: `${nextId}:2099-03-10`, completedAt: expect.any(String) },
-    ])
+    expect(await on('2099-03-09')).toMatchObject([{ completedAt: expect.any(String) }])
     expect(await on('2099-03-16')).toEqual([])
-    expect(await on('2099-03-17')).toMatchObject([
-      { id: `${nextId}:2099-03-17`, completedAt: null },
+    expect(await on('2099-03-17')).toMatchObject([{ id: `${nextId}:2099-03-17` }])
+    expect(await on('2099-03-23')).toEqual([])
+    expect(await on('2099-03-24')).toHaveLength(1)
+  })
+
+  it('a renamed moved occurrence stays where it was put ("this and future")', async () => {
+    const seriesId = randomUUID()
+    const nextId = randomUUID()
+    created.push(seriesId, nextId)
+    const title = `${PREFIX} monthly ${seriesId.slice(0, 8)}`
+    const monthly = parseRule('FREQ=MONTHLY')
+    if (!monthly) throw new Error('rule')
+    const spec = { rule: monthly, until: null }
+    await repo.create(
+      seriesId,
+      {
+        title,
+        notes: null,
+        icon: null,
+        color: 'blue',
+        subtasks: [],
+        date: '2099-01-05',
+        startTime: '09:00',
+        durationMin: 30,
+        isAllDay: false,
+      },
+      spec,
+    )
+    const on = async (date: string) =>
+      (await repo.listDay(date)).filter((t) => t.title.startsWith(PREFIX))
+    const [march] = await on('2099-03-05')
+    if (!march) throw new Error('no occurrence in March')
+    await repo.applySeriesWrite(
+      planEdit(march, draftOf(march, { date: '2099-03-06' }), spec, 'this', ''),
+    )
+    const [moved] = await on('2099-03-06')
+    if (!moved) throw new Error('not moved')
+    await repo.applySeriesWrite(
+      planEdit(moved, draftOf(moved, { title: `${title} renamed` }), spec, 'future', nextId),
+    )
+    expect(await on('2099-03-05')).toEqual([])
+    expect(await on('2099-03-06')).toMatchObject([{ title: `${title} renamed` }])
+    expect(await on('2099-04-05')).toMatchObject([
+      { title: `${title} renamed`, id: `${nextId}:2099-04-05` },
     ])
+    expect(await on('2099-02-05')).toMatchObject([{ title }])
   })
 })

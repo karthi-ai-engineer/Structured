@@ -431,6 +431,14 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
               <p className="text-sm font-medium">
                 {asking.action === 'save' ? 'Save the change for' : 'Delete'}
               </p>
+              {asking.action === 'save' &&
+              asking.scopes.length === 1 &&
+              asking.scopes[0] === 'this' ? (
+                <p className="text-xs text-muted-foreground">
+                  A new day applies to this task only. To move every future task, change Repeat (for
+                  example to another weekday).
+                </p>
+              ) : null}
               {asking.scopes.map((scope) => (
                 <Button
                   key={scope}

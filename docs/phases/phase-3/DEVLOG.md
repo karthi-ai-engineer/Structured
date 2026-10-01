@@ -64,3 +64,11 @@
   - two live-database tests: the "all" rename keeps a moved occurrence's own time; an end-date change keeps a cancelled day; a weekly series moved a day later carries its completed occurrence
   - `npm run verify`: 937 tests
 
+### Code review, round 2: 7 of 9 fixed; 3 and 9 partly; 2 new major issues (moved occurrences under "this and future"); all fixed
+- **Root cause:** inferring a series shift from moving one occurrence. It is gone:
+  - **Moving an occurrence** to another day is "this task only". The editor explains that moving every future task means changing Repeat (for example to another weekday).
+  - **A rule change** ("this and future") starts the new series on the date the user picked.
+  - **Without a date change,** the series continues on the occurrence's own slot, and the edited occurrence's own override carries over (`split_series`'s `p_keep`, migration `0005_split_keep`). A moved occurrence stays where it was put.
+- **Optimistic split:** it keeps the completed (and kept) occurrences with the new values, and adds the new series' occurrences to every cached day.
+- **Live database:** a weekly series moved to Tuesday from a later Monday keeps its Monday history and completion. A moved, renamed monthly occurrence stays on its day, and the pattern continues on the 5th.
+
