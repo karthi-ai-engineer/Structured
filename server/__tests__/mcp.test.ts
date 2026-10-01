@@ -483,3 +483,66 @@ describe('review fixes', () => {
     expect(searchPattern('50%_off')).toBe('%50\\%\\_off%')
   })
 })
+
+describe('recurring tasks', () => {
+  const SERIES = uuid(950)
+  beforeEach(() => {
+    store.seriesRows = [
+      {
+        id: SERIES,
+        title: 'Rise and Shine',
+        notes: null,
+        icon: 'sunrise',
+        color: 'orange',
+        subtasks: [],
+        date: '2099-03-01',
+        start_time: '07:30:00',
+        duration_min: 60,
+        is_all_day: false,
+        completed_at: null,
+        inbox_order: 0,
+        created_at: '2099-01-01T00:00:00.000Z',
+        updated_at: '2099-01-01T00:00:00.000Z',
+        repeat_rule: 'FREQ=DAILY',
+        repeat_until: null,
+        series_id: null,
+        occurrence_date: null,
+        is_cancelled: false,
+      },
+    ]
+  })
+
+  it('schedule reads include occurrences, marked as repeating and read-only', async () => {
+    const r = await call('get_schedule', { start_date: '2099-03-11' })
+    const rise = r.data.days[0].timed.find((t: { title: string }) => t.title === 'Rise and Shine')
+    expect(rise).toMatchObject({
+      id: `${SERIES}:2099-03-11`,
+      start: '07:30',
+      end: '08:30',
+      repeats: 'Every day',
+      read_only: true,
+    })
+    const slots = await call('find_free_slots', { date: '2099-03-11', min_duration_min: 15 })
+    // Day hours start at 07:00: free until the occurrence, then from its end.
+    expect(slots.data.slots[0]).toMatchObject({ start: '07:00', end: '07:30' })
+    expect(slots.data.slots[1]).toMatchObject({ start: '08:30' })
+  })
+
+  it('warns about overlaps with an occurrence', async () => {
+    const r = await call('create_tasks', {
+      dry_run: true,
+      tasks: [{ title: 'Early call', date: '2099-03-12', start_time: '08:00', duration_min: 30 }],
+    })
+    expect(JSON.stringify(r.data)).toContain('Rise and Shine')
+  })
+
+  it('refuses to change an occurrence, with a clear reason', async () => {
+    const r = await call('set_completion', { ids: [`${SERIES}:2099-03-11`], done: true })
+    expect(r.isError).toBe(true)
+    expect(r.summary + JSON.stringify(r.data)).toContain(
+      'repeating tasks can be changed only in the app',
+    )
+    const bad = await call('delete_tasks', { ids: ['nope'] })
+    expect(bad.summary + JSON.stringify(bad.data)).toContain('Not a task id')
+  })
+})

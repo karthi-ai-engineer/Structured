@@ -16,6 +16,7 @@ import {
   type ISODate,
 } from '../../src/core/dates.ts'
 import { TASK_ICON_NAMES, toStoredIcon } from '../../src/core/icons.ts'
+import { parseOccurrenceId } from '../../src/core/series.ts'
 import {
   findFreeSlots,
   overlappingPairs,
@@ -62,7 +63,16 @@ const isoDate = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
   .refine(isISODate, 'Not a real calendar date')
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:mm (24-hour)')
-const taskId = z.string().uuid()
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const taskId = z.string().superRefine((id, ctx) => {
+  if (UUID.test(id)) return
+  ctx.addIssue({
+    code: 'custom',
+    message: parseOccurrenceId(id)
+      ? 'This is an occurrence of a repeating task; repeating tasks can be changed only in the app for now'
+      : 'Not a task id',
+  })
+})
 const color = z.enum(COLOR_NAMES)
 const duration = z.number().int().min(0).max(1440)
 const title = z.string().trim().min(1).max(200)
@@ -421,6 +431,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
           inboxOrder: 0,
           createdAt: '',
           updatedAt: '',
+          recurrence: null,
         })
 
         if (dry_run) {
