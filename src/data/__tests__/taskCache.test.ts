@@ -175,10 +175,11 @@ describe('recurring occurrences in the cache', () => {
     expect(day('2026-10-01')[0]?.title).toBe('Run')
     expect(day('2026-10-03')).toEqual([])
 
-    // A split with the same rule and days: the occurrences stay, with the new values.
+    // A split: completed (and kept) occurrences stay with the new values; the others are
+    // replaced by the new series' occurrences in every cached day.
     const { qc: qc2, day: day2 } = cacheWith(
       occ('2026-10-01'),
-      occ('2026-10-02'),
+      occ('2026-10-02', { completedAt: NOW }),
       occ('2026-10-03'),
     )
     const next = {
@@ -187,20 +188,20 @@ describe('recurring occurrences in the cache', () => {
       repeat: daily,
       completedAt: null,
     }
-    writeSeriesToCache(qc2, { kind: 'split', seriesId: SERIES, from: '2026-10-02', shift: 0, next })
-    expect(day2('2026-10-01')[0]?.title).toBe('T')
-    expect(day2('2026-10-03')[0]).toMatchObject({ title: 'Later', startTime: '06:00' })
-
-    // Moved by a day: replaced, and the new series' first occurrence shows at once.
     writeSeriesToCache(qc2, {
       kind: 'split',
       seriesId: SERIES,
       from: '2026-10-02',
-      shift: 1,
-      next: { ...next, draft: { ...next.draft, date: '2026-10-03' } },
+      keep: null,
+      next,
     })
-    expect(day2('2026-10-02')).toEqual([])
-    expect(day2('2026-10-03').map((t) => t.id)).toEqual([`${next.id}:2026-10-03`])
+    expect(day2('2026-10-01')[0]?.title).toBe('T')
+    expect(day2('2026-10-02')).toMatchObject([
+      { id: `${SERIES}:2026-10-02`, title: 'Later', completedAt: NOW },
+    ])
+    expect(day2('2026-10-03')).toMatchObject([
+      { id: `${next.id}:2026-10-03`, title: 'Later', startTime: '06:00', completedAt: null },
+    ])
 
     // Repeating turned off: the one-off task shows, with its completion.
     const { qc: qc3, day: day3 } = cacheWith(occ('2026-10-01'), occ('2026-10-02'))
@@ -208,10 +209,20 @@ describe('recurring occurrences in the cache', () => {
       kind: 'split',
       seriesId: SERIES,
       from: '2026-10-02',
-      shift: 0,
+      keep: null,
       next: { ...next, repeat: null, completedAt: NOW },
     })
     expect(day3('2026-10-02')).toMatchObject([{ id: next.id, completedAt: NOW, recurrence: null }])
+
+    // Ending the series: nothing continues.
+    writeSeriesToCache(qc3, {
+      kind: 'split',
+      seriesId: SERIES,
+      from: '2026-10-01',
+      keep: null,
+      next: null,
+    })
+    expect(day3('2026-10-01')).toEqual([])
 
     writeSeriesToCache(qc, { kind: 'cancel', task: occ('2026-10-02') })
     expect(day('2026-10-02').map((t) => t.id)).toEqual(['plain'])

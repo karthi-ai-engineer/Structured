@@ -10,7 +10,6 @@ import {
   presetOf,
   presetRule,
   sameRule,
-  shiftWeekdays,
   validateRule,
   type RepeatRule,
 } from '../recurrence.ts'
@@ -223,14 +222,49 @@ describe('presets', () => {
   })
 })
 
-describe('shiftWeekdays', () => {
-  it('moves weekly days, wrapping around the week; other rules stay', () => {
-    expect(shiftWeekdays(rule('FREQ=WEEKLY;BYDAY=MO,SA'), 1).weekdays).toEqual([0, 2])
-    expect(shiftWeekdays(rule('FREQ=WEEKLY;BYDAY=MO'), -1).weekdays).toEqual([0])
-    const weekly = rule('FREQ=WEEKLY;BYDAY=WE')
-    expect(shiftWeekdays(weekly, 14)).toBe(weekly)
-    expect(shiftWeekdays(daily, 3)).toBe(daily)
-    const implicit: RepeatRule = { freq: 'weekly', interval: 1, weekdays: [] }
-    expect(shiftWeekdays(implicit, 2)).toBe(implicit)
+describe('BYMONTHDAY (a series continued from a short month)', () => {
+  it('parses, formats and rejects it outside monthly and yearly rules', () => {
+    expect(parseRule('FREQ=MONTHLY;BYMONTHDAY=31')).toEqual({
+      freq: 'monthly',
+      interval: 1,
+      weekdays: [],
+      monthDay: 31,
+    })
+    expect(formatRule(rule('FREQ=YEARLY;BYMONTHDAY=29'))).toBe('FREQ=YEARLY;BYMONTHDAY=29')
+    for (const text of [
+      'FREQ=DAILY;BYMONTHDAY=3',
+      'FREQ=MONTHLY;BYMONTHDAY=0',
+      'FREQ=MONTHLY;BYMONTHDAY=32',
+      'FREQ=MONTHLY;BYMONTHDAY=x',
+    ]) {
+      expect(parseRule(text), text).toBeNull()
+    }
+  })
+
+  it('keeps the 31st after starting on Feb 28, and Feb 29 in leap years', () => {
+    expect(
+      occurrencesIn(
+        rule('FREQ=MONTHLY;BYMONTHDAY=31'),
+        '2026-02-28',
+        null,
+        '2026-02-01',
+        '2026-05-31',
+      ),
+    ).toEqual(['2026-02-28', '2026-03-31', '2026-04-30', '2026-05-31'])
+    expect(
+      occurrencesIn(
+        rule('FREQ=YEARLY;BYMONTHDAY=29'),
+        '2029-02-28',
+        null,
+        '2029-01-01',
+        '2032-12-31',
+      ),
+    ).toEqual(['2029-02-28', '2030-02-28', '2031-02-28', '2032-02-29'])
+    expect(describeRule(rule('FREQ=MONTHLY;BYMONTHDAY=31'), '2026-02-28')).toBe(
+      'Every month on the 31st (or the last day)',
+    )
+    expect(describeRule(rule('FREQ=YEARLY;BYMONTHDAY=29'), '2029-02-28')).toBe(
+      'Every year on 29 February',
+    )
   })
 })

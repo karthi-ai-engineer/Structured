@@ -64,6 +64,29 @@
   - two live-database tests: the "all" rename keeps a moved occurrence's own time; an end-date change keeps a cancelled day; a weekly series moved a day later carries its completed occurrence
   - `npm run verify`: 937 tests
 
+### Code review, round 2: 7 of 9 fixed; 3 and 9 partly; 2 new major issues (moved occurrences under "this and future"); all fixed
+- **Root cause:** inferring a series shift from moving one occurrence. It is gone:
+  - **Moving an occurrence** to another day is "this task only". The editor explains that moving every future task means changing Repeat (for example to another weekday).
+  - **A rule change** ("this and future") starts the new series on the date the user picked.
+  - **Without a date change,** the series continues on the occurrence's own slot, and the edited occurrence's own override carries over (`split_series`'s `p_keep`, migration `0005_split_keep`). A moved occurrence stays where it was put.
+- **Optimistic split:** it keeps the completed (and kept) occurrences with the new values, and adds the new series' occurrences to every cached day.
+- **Live database:** a weekly series moved to Tuesday from a later Monday keeps its Monday history and completion. A moved, renamed monthly occurrence stays on its day, and the pattern continues on the 5th.
+
+### Code review, round 3: findings 3 and 9 to 12 fixed; 1 new major issue; fixed
+- **The issue:** a new day plus a new end date with the same rule made the occurrence vanish.
+- **The fix:**
+  - Daily, monthly and yearly series (whose days follow the start) can move "this and future" on the picked day. This also closes the review's note that a monthly series could not move to another day of the month.
+  - Weekly moves stay "this" only.
+  - A new day plus a new end date asks for two saves.
+  - `planEdit` now throws for any scope `scopesFor` does not offer.
+- **The MCP protocol tests** get a 20 s timeout: one timed out once under the full coverage run, and passes alone.
+
+### Code review, round 4: both round-3 items fixed; 1 new major issue; fixed
+- **The issue:** "this and future" from a clamped occurrence moved a monthly series on the 31st to the 28th.
+- **The fix:** rules may carry `BYMONTHDAY`. A split from a clamped day keeps the series' original day (also Feb 29 for yearly series).
+- **Stale scope buttons:** the editor now recomputes the offered scopes live, and ignores a choice that is no longer valid.
+- **Known and accepted:** moving a whole series from its first occurrence keeps completed occurrences on their old dates, as history.
+
 ## WP2: Timeline interactions (2026-10-01)
 
 ### What was done
@@ -88,4 +111,3 @@
 - **Resize handle:** the small bar at the bottom of each pill.
 - **Phone:** press and hold a pill, then drag.
 - **Fixed during development:** the resize handle is small, so a fast mouse drag could leave it before the drag started. Mouse and pen pointers are now captured on press.
-

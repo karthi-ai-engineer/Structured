@@ -183,7 +183,7 @@ export function createTasksRepo(db: Db): TasksRepo {
             db.rpc('split_series', {
               p_series_id: write.seriesId,
               p_from: write.from,
-              p_shift: write.shift,
+              ...(write.keep ? { p_keep: write.keep } : {}),
               ...(write.next ? { p_new: nextJson(write.next) } : {}),
             }),
           )

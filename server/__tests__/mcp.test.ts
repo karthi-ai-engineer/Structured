@@ -1,10 +1,14 @@
 // The MCP server end to end through the official MCP client (same protocol as Claude), against an
 // in-memory store and a fixed clock: Tuesday 2099-03-10, 09:00 in Asia/Tokyo.
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createEntry, secretFromUrl, secretMatches } from '../mcp/entry.ts'
 import { searchPattern } from '../store.ts'
 import { MemoryStore } from './memoryStore.ts'
+
+// Each test makes several protocol round trips; under the full coverage run on a busy machine a
+// few of them take longer than the 5 s default.
+vi.setConfig({ testTimeout: 20_000 })
 
 const SECRET = 'test-secret-0123456789-abcdefghijklmnop'
 const NOW = new Date(Date.UTC(2099, 2, 10, 0, 0, 0)) // 09:00 in Tokyo

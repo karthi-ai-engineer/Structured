@@ -359,9 +359,9 @@ export type Database = {
       split_series: {
         Args: {
           p_from: string
+          p_keep?: string
           p_new?: Json
           p_series_id: string
-          p_shift?: number
         }
         Returns: undefined
       }

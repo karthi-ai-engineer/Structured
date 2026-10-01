@@ -10,9 +10,9 @@
 //   new rule, to the refetch on settle.
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { addDays, nowIso, type ISODate } from '@/core/dates'
-import { occursOn, sameRule } from '@/core/recurrence'
+import { occursOn } from '@/core/recurrence'
 import { generatedOccurrence } from '@/core/series'
-import { sharedPatch, type RepeatSpec, type SeriesWrite } from '@/core/seriesEdits'
+import { sharedPatch, type NextTask, type RepeatSpec, type SeriesWrite } from '@/core/seriesEdits'
 import { applyPatch, belongsTo, type Task, type TaskDraft, type TaskPatch } from '@/core/tasks'
 import { listOfKey, taskKeys, taskMutationKey } from '@/data/queries/keys'
 import { tasks } from '@/data/queries/repos'
@@ -106,25 +106,40 @@ export function writeSeriesToCache(qc: QueryClient, write: SeriesWrite): void {
     }
     case 'split': {
       const next = write.next
-      // Same rule, same days: the occurrences stay, with the new values.
-      if (next?.repeat && write.shift === 0) {
-        const rule = next.repeat.rule
-        const shared = sharedPatch(next.draft)
-        mapSeriesInCache(qc, write.seriesId, write.from, (t) =>
-          t.recurrence && sameRule(rule, t.recurrence.rule) ? applyPatch(t, shared) : null,
-        )
-        return
-      }
-      // Otherwise they are replaced: show the new first occurrence (or one-off task) right away.
-      mapSeriesInCache(qc, write.seriesId, write.from, () => null)
-      if (next) {
-        const shown = shownAs(
-          { ...newTask(next.id, next.draft, nowIso()), completedAt: next.completedAt },
-          next.repeat,
-        )
-        if (shown) writeTaskToCache(qc, shown.id, shown)
-      }
+      // Like the database: completed occurrences (and the kept one) move to a new series with its
+      // values; the others are replaced by the new series' own occurrences.
+      const kept = new Set<ISODate>()
+      mapSeriesInCache(qc, write.seriesId, write.from, (t) => {
+        const keep =
+          next?.repeat && (t.completedAt !== null || t.recurrence?.occurrenceDate === write.keep)
+        if (!keep || !next.repeat || !t.recurrence) return null
+        kept.add(t.recurrence.occurrenceDate)
+        return applyPatch(t, sharedPatch(next.draft))
+      })
+      if (next) writeNextToCache(qc, next, kept)
     }
+  }
+}
+
+/** Shows what continues after a split: the one-off task, or the new series' occurrences in
+ *  every cached day (except where a kept occurrence already stands). */
+function writeNextToCache(qc: QueryClient, next: NextTask, kept: ReadonlySet<ISODate>): void {
+  const task: Task = { ...newTask(next.id, next.draft, nowIso()), completedAt: next.completedAt }
+  const start = task.date
+  if (!next.repeat || start === null) {
+    writeTaskToCache(qc, task.id, task)
+    return
+  }
+  const master = {
+    task: { ...task, date: start },
+    rule: next.repeat.rule,
+    until: next.repeat.until,
+  }
+  for (const [key, data] of qc.getQueriesData<Task[]>({ queryKey: taskKeys.all })) {
+    const list = listOfKey(key)
+    if (list?.kind !== 'day' || !data || kept.has(list.date)) continue
+    if (!occursOn(master.rule, start, master.until, list.date)) continue
+    qc.setQueryData(key, [...data, generatedOccurrence(master, list.date)])
   }
 }
 
