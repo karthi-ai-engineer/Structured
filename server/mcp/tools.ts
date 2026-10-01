@@ -16,6 +16,7 @@ import {
   type ISODate,
 } from '../../src/core/dates.ts'
 import { TASK_ICON_NAMES, toStoredIcon } from '../../src/core/icons.ts'
+import { OVERDUE_DAYS } from '../../src/core/calendar.ts'
 import { parseOccurrenceId } from '../../src/core/series.ts'
 import {
   findFreeSlots,
@@ -55,8 +56,6 @@ export interface ToolDeps {
 
 const COLOR_NAMES = TASK_COLORS.map((c) => c.name) as [string, ...string[]]
 const MAX_RANGE_DAYS = 31
-/** How far back "overdue" looks, in get_context and list_overdue alike. */
-const OVERDUE_DAYS = 14
 
 const isoDate = z
   .string()

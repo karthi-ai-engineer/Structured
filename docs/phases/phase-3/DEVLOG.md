@@ -121,3 +121,34 @@
   - finger movement in any direction cancels a long press
   - inbox drags carry their own data type, so a stale drag never moves a task
 
+## WP3: Week and month views, and Replan (2026-10-01)
+
+### What was done
+- **Week view** (`/week/:date`): seven days side by side on desktop, stacked on phones. Each task can be ticked or opened; each day has an add button and links to its day view.
+- **Month view** (`/month/:month`): a grid of six full weeks.
+  - Desktop shows up to three titles per day, then "+N more"; phones show colored dots.
+  - Tap a day to open it.
+- **Both views:** arrow keys step back and forward, `t` goes to today, and a Day / Week / Month switch keeps the date.
+- **Replan** (`/replan`): unfinished one-off tasks from the last 14 days (`OVERDUE_DAYS`, shared with the MCP tools), grouped by day.
+  - Per task: Today (the first free slot that fits), Tomorrow, Inbox, Done, Delete.
+  - "Fit all into today" fills today's free time, oldest first, and reports what does not fit.
+  - Today's timeline shows a banner when anything is unfinished.
+- **Data:**
+  - range and overdue lists in the cache, with membership rules in `belongsTo`
+  - `listOverdue` in the repository
+  - a split's new series shows at once in cached weeks and months too
+
+### Commands run
+- `npm run verify`
+- `npm run test:e2e`: the new `views.spec.ts` (day → week via the switch, complete from the week, month cell → day; Replan moves yesterday's task to today) and the whole suite
+
+### Notes for testers
+- **"Fit all into today"** moves every listed task. The e2e tests use only the per-task Today button, so real overdue tasks are never touched.
+- **Repeating tasks** are not listed in Replan: they come back on their own.
+
+### Code review (PR #28): approved, with 4 minor findings, all fixed before merge
+- **"Fit all into today":** all-day and 0-minute tasks no longer take a minute of busy time, so later tasks stay on the 5-minute grid.
+- **Replan's Today and "Fit all":** they wait until today's plan has loaded, so they never schedule over tasks that are still loading.
+- **"Today" on an all-day task:** it moves only the date, with no stray start time.
+- **The month grid:** a plain section of links instead of grid roles that promised arrow-key cell navigation.
+

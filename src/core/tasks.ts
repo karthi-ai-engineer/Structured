@@ -247,11 +247,32 @@ export function applyPatch(task: Task, patch: TaskPatch): Task {
 }
 
 /** Whether a task belongs in the given list (for optimistic cache updates). */
+/** A cached task list: one day, a date range (week and month views), the inbox, or the
+ *  unfinished one-off tasks dated `since` up to the day before `before` (Replan). */
+export type TaskList =
+  | { kind: 'day'; date: ISODate }
+  | { kind: 'range'; from: ISODate; to: ISODate }
+  | { kind: 'inbox' }
+  | { kind: 'overdue'; since: ISODate; before: ISODate }
+
 export function belongsTo(
-  task: Pick<Task, 'date' | 'completedAt'>,
-  list: { kind: 'day'; date: ISODate } | { kind: 'inbox' },
+  task: Pick<Task, 'date' | 'completedAt' | 'recurrence'>,
+  list: TaskList,
 ): boolean {
-  return list.kind === 'day'
-    ? task.date === list.date
-    : task.date === null && task.completedAt === null
+  switch (list.kind) {
+    case 'day':
+      return task.date === list.date
+    case 'range':
+      return task.date !== null && task.date >= list.from && task.date <= list.to
+    case 'inbox':
+      return task.date === null && task.completedAt === null
+    case 'overdue':
+      return (
+        task.date !== null &&
+        task.date >= list.since &&
+        task.date < list.before &&
+        task.completedAt === null &&
+        task.recurrence === null
+      )
+  }
 }

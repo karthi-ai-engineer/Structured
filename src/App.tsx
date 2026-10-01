@@ -8,6 +8,9 @@ import { settingsKey } from '@/data/queries/keys'
 import { isDbConfigured } from '@/data/queries/repos'
 import { useRealtimeSync } from '@/data/queries/realtime'
 import { useSeedDefaults } from '@/data/queries/seed'
+import { MonthView } from '@/features/calendar/MonthView'
+import { ReplanView } from '@/features/calendar/ReplanView'
+import { WeekView } from '@/features/calendar/WeekView'
 import { EditorProvider } from '@/features/editor/EditorProvider'
 import { InboxView } from '@/features/inbox/InboxView'
 import { SettingsView } from '@/features/settings/SettingsView'
@@ -43,6 +46,11 @@ export function AppRoutes() {
         <Route element={<AppShell />}>
           <Route index element={<DayView />} />
           <Route path="day/:date" element={<DayView />} />
+          <Route path="week" element={<WeekView />} />
+          <Route path="week/:date" element={<WeekView />} />
+          <Route path="month" element={<MonthView />} />
+          <Route path="month/:month" element={<MonthView />} />
+          <Route path="replan" element={<ReplanView />} />
           <Route path="inbox" element={<InboxView />} />
           <Route path="settings" element={<SettingsView />} />
           <Route path="*" element={<Navigate to="/" replace />} />

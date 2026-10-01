@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Task } from '@/core/tasks'
 import { createQueryClient } from '@/data/queries/client'
-import { listOfKey, taskKeys } from '@/data/queries/keys'
+import { datesOfList, listOfKey, taskKeys } from '@/data/queries/keys'
 import {
   newTask,
   settleTasks,
@@ -34,11 +34,47 @@ function task(overrides: Partial<Task>): Task {
 }
 
 describe('listOfKey', () => {
-  it('recognizes day and inbox keys only', () => {
+  it('recognizes day, range, inbox and overdue keys only', () => {
     expect(listOfKey(taskKeys.day('2026-10-01'))).toEqual({ kind: 'day', date: '2026-10-01' })
+    expect(listOfKey(taskKeys.range('2026-09-28', '2026-10-04'))).toEqual({
+      kind: 'range',
+      from: '2026-09-28',
+      to: '2026-10-04',
+    })
     expect(listOfKey(taskKeys.inbox())).toEqual({ kind: 'inbox' })
+    expect(listOfKey(taskKeys.overdue('2026-10-15'))).toEqual({
+      kind: 'overdue',
+      since: '2026-10-01',
+      before: '2026-10-15',
+    })
     expect(listOfKey(['tasks', 'other'])).toBeNull()
+    expect(listOfKey(['tasks', 'day', 'nope'])).toBeNull()
+    expect(listOfKey(['tasks', 'range', '2026-10-01'])).toBeNull()
     expect(listOfKey(['settings'])).toBeNull()
+  })
+
+  it('lists the dates a cached list covers', () => {
+    expect(datesOfList({ kind: 'day', date: '2026-10-01' })).toEqual(['2026-10-01'])
+    expect(datesOfList({ kind: 'range', from: '2026-09-30', to: '2026-10-02' })).toEqual([
+      '2026-09-30',
+      '2026-10-01',
+      '2026-10-02',
+    ])
+    expect(datesOfList({ kind: 'inbox' })).toEqual([])
+  })
+
+  it('moves a task between a day, a week and the overdue list in one write', () => {
+    const qc = createQueryClient()
+    const late = task({ id: 'late', date: '2026-10-01' })
+    qc.setQueryData(taskKeys.overdue('2026-10-03'), [late])
+    qc.setQueryData(taskKeys.range('2026-09-28', '2026-10-04'), [late])
+    qc.setQueryData(taskKeys.day('2026-10-03'), [])
+    writeTaskToCache(qc, 'late', { ...late, date: '2026-10-03' })
+    expect(qc.getQueryData(taskKeys.overdue('2026-10-03'))).toEqual([])
+    expect(qc.getQueryData<Task[]>(taskKeys.range('2026-09-28', '2026-10-04'))?.[0]?.date).toBe(
+      '2026-10-03',
+    )
+    expect(qc.getQueryData<Task[]>(taskKeys.day('2026-10-03'))).toHaveLength(1)
   })
 })
 
@@ -230,5 +266,29 @@ describe('recurring occurrences in the cache', () => {
     writeSeriesToCache(qc, { kind: 'remove-series', seriesId: SERIES })
     expect(day('2026-10-01')).toEqual([])
     expect(day('2026-10-02').map((t) => t.id)).toEqual(['plain'])
+  })
+})
+
+describe('a split shown in a cached week', () => {
+  it('adds the new series to every day of a cached range', () => {
+    const SERIES = '11111111-1111-4111-8111-111111111111'
+    const daily = { rule: { freq: 'daily' as const, interval: 1, weekdays: [] }, until: null }
+    const qc = createQueryClient()
+    qc.setQueryData(taskKeys.range('2026-10-01', '2026-10-03'), [])
+    writeSeriesToCache(qc, {
+      kind: 'split',
+      seriesId: SERIES,
+      from: '2026-10-02',
+      keep: null,
+      next: {
+        id: '22222222-2222-4222-8222-222222222222',
+        draft: { ...task({ id: 'x' }), date: '2026-10-02' },
+        repeat: daily,
+        completedAt: null,
+      },
+    })
+    expect(
+      qc.getQueryData<Task[]>(taskKeys.range('2026-10-01', '2026-10-03'))?.map((t) => t.date),
+    ).toEqual(['2026-10-02', '2026-10-03'])
   })
 })

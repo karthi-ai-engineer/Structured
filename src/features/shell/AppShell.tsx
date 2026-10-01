@@ -10,8 +10,12 @@ const NAV: readonly { to: string; label: string; icon: LucideIcon; end?: boolean
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ]
 
+/** The planning screens: the Timeline tab, with the inbox panel beside them on desktop. */
 function isTimeline(pathname: string): boolean {
-  return pathname === '/' || pathname.startsWith('/day/')
+  return (
+    pathname === '/' ||
+    ['/day/', '/week', '/month', '/replan'].some((prefix) => pathname.startsWith(prefix))
+  )
 }
 
 /** Phones: content plus a bottom tab bar. Desktop: sidebar, content and an inbox panel. */
