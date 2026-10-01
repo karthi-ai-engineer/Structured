@@ -177,6 +177,19 @@ describe('parseQuickAdd keeps ordinary titles (code review)', () => {
     }
   })
 
+  it('keeps "this", "on" and "next" unless a weekday follows', () => {
+    expect(parseQuickAdd('Review this tomorrow', TODAY)).toMatchObject({
+      title: 'Review this',
+      date: '2026-10-02',
+    })
+    expect(parseQuickAdd('Plan next week', TODAY)).toEqual({ title: 'Plan next week', found: [] })
+    expect(parseQuickAdd('Gym on wed 7am', TODAY)).toMatchObject({
+      title: 'Gym',
+      date: '2026-10-07',
+      startTime: '07:00',
+    })
+  })
+
   it('keeps quoted text as typed', () => {
     expect(parseQuickAdd('"Gym tomorrow" class 6pm', TODAY)).toMatchObject({
       title: 'Gym tomorrow class',

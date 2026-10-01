@@ -216,8 +216,9 @@ export function parseQuickAdd(input: string, today: ISODate): QuickAdd {
     const next = words[i + 1] ?? ''
 
     if (result.date === undefined) {
-      // "on friday", "next fri", "this sat": the lead word goes with the date.
-      if (WEEKDAY_LEADS.has(lower)) {
+      // "on friday", "next fri", "this sat": the lead word goes with a weekday (only: "Review
+      // this tomorrow" keeps its "this").
+      if (WEEKDAY_LEADS.has(lower) && weekdayOf(next, true) !== null) {
         const led = dateAt(words, i + 1, today, lower)
         if (led) {
           result.date = led.date

@@ -41,7 +41,8 @@ export function useOverdueTasks(today: ISODate) {
 export function useCachedTasks(): Task[] {
   const qc = useQueryClient()
   const byId = new Map<string, Task>()
-  for (const [, data] of qc.getQueriesData<Task[]>({ queryKey: taskKeys.all })) {
+  for (const [key, data] of qc.getQueriesData<Task[]>({ queryKey: taskKeys.all })) {
+    if (!listOfKey(key)) continue // search results hold series templates, not occurrences
     for (const t of data ?? []) byId.set(t.id, t)
   }
   return [...byId.values()]
@@ -280,7 +281,8 @@ export function useTaskActions() {
 
   /** The task as the cache has it now (an undo must not overwrite later changes). */
   const latest = (id: string, fallback: Task): Task => {
-    for (const [, data] of qc.getQueriesData<Task[]>({ queryKey: taskKeys.all })) {
+    for (const [key, data] of qc.getQueriesData<Task[]>({ queryKey: taskKeys.all })) {
+      if (!listOfKey(key)) continue
       const found = data?.find((t) => t.id === id)
       if (found) return found
     }

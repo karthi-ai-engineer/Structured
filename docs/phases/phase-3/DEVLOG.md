@@ -237,3 +237,9 @@
   - Duplicate opens a new, prefilled task with the saved values (no early insert, no lost edits)
   - a series' due date never marks later occurrences overdue
 
+### Code review, round 2: approved; 3 of its 4 new minors fixed before merge
+- **"this", "on" and "next"** are consumed only before a weekday ("Review this tomorrow" keeps "this").
+- **A duplicate** (a prefilled new task) is not re-parsed.
+- **Undo and suggestions** read only real task lists; search results hold series templates.
+- **Accepted:** "Dinner at 8" means 08:00. Only "at 1" to "at 7" mean the afternoon; write 8pm.
+

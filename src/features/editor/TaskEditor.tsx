@@ -131,7 +131,8 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
   const editing = request.mode === 'edit' ? request.task : null
   // New tasks: quick-add syntax in the title (T15), and an icon and color that follow the title
   // (T16) until one is picked by hand.
-  const quick = editing ? null : parseQuickAdd(draft.title, today)
+  const prefilled = request.mode === 'create' && request.defaults.title !== undefined
+  const quick = editing || prefilled ? null : parseQuickAdd(draft.title, today)
   const [stylePicked, setStylePicked] = useState(
     editing !== null || (request.mode === 'create' && request.defaults.icon !== undefined),
   )
