@@ -21,15 +21,15 @@ It is a single-user app that runs entirely on free tiers, built phase by phase f
 - settings with themes
 - live sync between devices
 
-**Phase 2** connects Claude: ask it to plan your day, and the tasks appear live in the planner (see [Connect Claude](#connect-claude)). Next is Structured parity (Phase 3). [`HANDOFF.md`](HANDOFF.md) has the live status, and [`CHANGELOG.md`](CHANGELOG.md) lists every release.
+**Phase 3** brings Structured parity: repeating tasks, drag and drop, week and month views, Replan, energy, focus mode, alerts, quick add, search, a command palette, and an installable app that works offline. Next is the Android app (Phase 4). [`HANDOFF.md`](HANDOFF.md) has the live status, and [`CHANGELOG.md`](CHANGELOG.md) lists every release.
 
 | Phase | Scope | Status |
 |---|---|---|
 | 0. Foundation | Scaffold, database schema, time-zone core, CI/CD, "DB connected" page | Done (`v0.0.1`) |
 | 1. Web MVP | Day timeline, task editor, inbox, week strip, realtime sync, themes, settings | Done (`v0.1.0`) |
-| 2. MCP server | "Claude plans my day": read and write tools, dry runs, undo by batch | Done; ships as `v0.2.0` |
-| 3. Structured parity | Recurring tasks, drag and drop, week and month views, replan, energy monitor, focus mode, alerts, quick add | Next |
-| 4. Android APK | Capacitor app, native notifications, APK built by GitHub Actions | Planned |
+| 2. MCP server | "Claude plans my day": read and write tools, dry runs, undo by batch | Done (`v0.2.0`) |
+| 3. Structured parity | Recurring tasks, drag and drop, week and month views, replan, energy monitor, focus mode, alerts, quick add | Done; ships as `v0.3.0` |
+| 4. Android APK | Capacitor app, native notifications, APK built by GitHub Actions | Next |
 | 5. Work tracking | Goals with progress and pace, focus logs, stats, daily and weekly reviews | Planned |
 | 6. Extras | Web Push, offline write queue, calendar-grid view | Planned |
 
