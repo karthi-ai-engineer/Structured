@@ -7,6 +7,7 @@ import { createQueryClient } from '@/data/queries/client'
 import { settingsKey } from '@/data/queries/keys'
 import { isDbConfigured } from '@/data/queries/repos'
 import { useRealtimeSync } from '@/data/queries/realtime'
+import { useSeedDefaults } from '@/data/queries/seed'
 import { EditorProvider } from '@/features/editor/EditorProvider'
 import { InboxView } from '@/features/inbox/InboxView'
 import { SettingsView } from '@/features/settings/SettingsView'
@@ -23,6 +24,7 @@ function Background() {
   const qc = useQueryClient()
   const saving = useIsMutating() > 0
   useRealtimeSync()
+  useSeedDefaults()
   useEffect(() => guardUnload(saving), [saving])
   useEffect(() => {
     if (!isDbConfigured) return

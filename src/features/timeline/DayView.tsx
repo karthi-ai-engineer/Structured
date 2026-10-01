@@ -1,6 +1,6 @@
 import { Fragment, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router'
-import { CalendarDays, Plus } from 'lucide-react'
+import { CalendarDays, Plus, Repeat } from 'lucide-react'
 import { addDays, formatDateLabel, formatTime, isISODate, type ISODate } from '@/core/dates'
 import { layoutDay, nextStartTime, nowLineIndex, taskProgress } from '@/core/tasks'
 import { TaskIcon } from '@/components/TaskIcon'
@@ -111,6 +111,7 @@ export function DayView() {
                 >
                   <TaskIcon icon={task.icon} className="size-4" />
                   {task.title}
+                  {task.recurrence ? <Repeat aria-label="Repeats" className="size-3" /> : null}
                 </button>
                 <CheckCircle task={task} onToggle={actions.toggleComplete} />
               </div>

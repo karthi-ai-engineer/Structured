@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react'
+import { Check, Repeat } from 'lucide-react'
 import { formatDuration, formatTime, toMinutes, type TimeFormat } from '@/core/dates'
 import { colorHex, pillHeight, taskEnd, type Task } from '@/core/tasks'
 import { TaskIcon } from '@/components/TaskIcon'
@@ -82,6 +82,9 @@ export function TaskRow({
         <span className="block text-xs text-muted-foreground tabular-nums">
           {formatTime(start, timeFormat)}
           {task.durationMin > 0 ? ` – ${endLabel} (${formatDuration(task.durationMin)})` : ''}
+          {task.recurrence ? (
+            <Repeat aria-label="Repeats" className="ml-1.5 inline size-3 align-[-1px]" />
+          ) : null}
         </span>
         <span
           className={cn(

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Check, Inbox, Plus, Trash2, X } from 'lucide-react'
+import { Check, Inbox, Plus, Repeat, Trash2, X } from 'lucide-react'
 import { formatDuration, nowMinutesIn, todayIn } from '@/core/dates'
 import {
   DEFAULT_TASK_COLOR,
@@ -13,6 +13,7 @@ import {
   type Subtask,
   type TaskDraft,
 } from '@/core/tasks'
+import { planDelete, planEdit, repeatChanged, scopesFor, type EditScope } from '@/core/seriesEdits'
 import { DEFAULT_ICON, TASK_ICONS, TaskIcon } from '@/components/TaskIcon'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -23,6 +24,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAppSettings } from '@/data/queries/settings'
 import { useTaskActions } from '@/data/queries/tasks'
 import type { EditorRequest } from '@/features/editor/editorContext'
+import { RepeatField } from '@/features/editor/RepeatField'
+import {
+  initialRepeat,
+  repeatProblems,
+  repeatSpecOf,
+  type RepeatState,
+} from '@/features/editor/repeatState'
 import { cn } from '@/lib/utils'
 
 function initialDraft(request: EditorRequest, defaultDuration: number): TaskDraft {
@@ -45,6 +53,12 @@ function initialDraft(request: EditorRequest, defaultDuration: number): TaskDraf
   }
 }
 
+const SCOPE_LABELS: Record<EditScope, string> = {
+  this: 'This task only',
+  future: 'This and future tasks',
+  all: 'All tasks',
+}
+
 export function TaskEditor({ request, onClose }: { request: EditorRequest; onClose: () => void }) {
   const settings = useAppSettings()
   const actions = useTaskActions()
@@ -59,29 +73,63 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
   // The date the task had (or was opened for), restored when "Scheduled" is switched back on.
   const originalDate = request.mode === 'edit' ? request.task.date : (request.defaults.date ?? null)
   const set = (patch: Partial<TaskDraft>) => setDraft((d) => ({ ...d, ...patch }))
+  const today = todayIn(settings.timezone)
+  const editing = request.mode === 'edit' ? request.task : null
+  const occurrence = editing?.recurrence ? editing : null
+  const [repeat, setRepeat] = useState<RepeatState>(() =>
+    initialRepeat(editing, draft.date ?? today),
+  )
+  // Saving or deleting an occurrence first asks which occurrences the change is for.
+  const [asking, setAsking] = useState<{ action: 'save' | 'delete'; scopes: EditScope[] } | null>(
+    null,
+  )
 
-  const problems = validateDraft(draft)
+  const start = draft.date ?? today
+  const repeatSpec = draft.date === null ? null : repeatSpecOf(repeat, start)
+  const repeating = repeatSpec !== null
+  const problems = [...validateDraft(draft), ...repeatProblems(repeat, start)]
   const isEdit = request.mode === 'edit'
   const scheduled = draft.date !== null
   const accent = colorHex(draft.color)
 
-  function save(event?: FormEvent) {
-    event?.preventDefault()
-    if (problems.length > 0) return
-    const clean: TaskDraft = {
+  function cleanDraft(): TaskDraft {
+    return {
       ...draft,
       title: normalizeTitle(draft.title),
       notes: draft.notes?.trim() ? draft.notes.trim() : null,
       startTime: draft.date === null || draft.isAllDay ? null : draft.startTime,
       isAllDay: draft.date !== null && draft.isAllDay,
     }
+  }
+
+  function save(event?: FormEvent) {
+    event?.preventDefault()
+    if (problems.length > 0) return
+    const clean = cleanDraft()
+    if (occurrence) {
+      const unchanged =
+        JSON.stringify(clean) === JSON.stringify(initialDraft(request, settings.defaultDuration)) &&
+        !repeatChanged(occurrence, repeatSpec)
+      if (unchanged) onClose()
+      else setAsking({ action: 'save', scopes: scopesFor(occurrence, repeatSpec) })
+      return
+    }
     // A completed task moved to the inbox is reopened: the inbox lists only open tasks, so it
     // would otherwise disappear from every screen.
-    const reopen =
-      request.mode === 'edit' && clean.date === null && request.task.completedAt !== null
-    if (request.mode === 'edit') {
-      actions.update(request.task, reopen ? { ...clean, completedAt: null } : clean)
-    } else actions.create(crypto.randomUUID(), clean)
+    const reopen = editing !== null && clean.date === null && editing.completedAt !== null
+    if (editing) {
+      actions.update(editing, reopen ? { ...clean, completedAt: null } : clean, repeatSpec)
+    } else actions.create(crypto.randomUUID(), clean, repeatSpec)
+    onClose()
+  }
+
+  function choose(scope: EditScope) {
+    if (!occurrence || !asking) return
+    actions.applySeries(
+      asking.action === 'delete'
+        ? planDelete(occurrence, scope)
+        : planEdit(occurrence, cleanDraft(), repeatSpec, scope, crypto.randomUUID()),
+    )
     onClose()
   }
 
@@ -188,6 +236,7 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
               <Switch
                 id="task-scheduled"
                 checked={scheduled}
+                disabled={repeating}
                 onCheckedChange={(on) =>
                   set(
                     on
@@ -206,6 +255,12 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                 <Inbox className="size-4" /> Saved to the inbox, to schedule later.
               </p>
             )}
+            {repeating ? (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Repeat className="size-3" /> A repeating task stays scheduled. Set Repeat to Never
+                to move it to the inbox.
+              </p>
+            ) : null}
             {scheduled ? (
               <>
                 <div className="grid grid-cols-2 gap-3">
@@ -241,6 +296,12 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                     onCheckedChange={(on) => set({ isAllDay: on })}
                   />
                 </div>
+                <RepeatField
+                  state={repeat}
+                  start={start}
+                  weekStart={settings.weekStart}
+                  onChange={setRepeat}
+                />
               </>
             ) : null}
           </div>
@@ -357,24 +418,60 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
             </ul>
           ) : null}
 
-          <div className="flex items-center gap-2">
-            {request.mode === 'edit' ? (
-              <Button
-                type="button"
-                variant="ghost"
-                className="text-destructive"
-                onClick={() => {
-                  actions.remove(request.task)
-                  onClose()
-                }}
-              >
-                <Trash2 data-icon="inline-start" /> Delete
+          {asking ? (
+            <div
+              role="group"
+              aria-label={
+                asking.action === 'save' ? 'Save the repeating task' : 'Delete the repeating task'
+              }
+              className="flex flex-col gap-2 rounded-lg border p-3"
+            >
+              <p className="text-sm font-medium">
+                {asking.action === 'save' ? 'Save the change for' : 'Delete'}
+              </p>
+              {asking.scopes.map((scope) => (
+                <Button
+                  key={scope}
+                  type="button"
+                  variant={asking.action === 'delete' ? 'destructive' : 'outline'}
+                  className="min-h-11 justify-start"
+                  onClick={() => choose(scope)}
+                >
+                  {SCOPE_LABELS[scope]}
+                </Button>
+              ))}
+              <Button type="button" variant="ghost" onClick={() => setAsking(null)}>
+                Cancel
               </Button>
-            ) : null}
-            <Button type="submit" className="ml-auto min-h-11 px-6" disabled={problems.length > 0}>
-              {isEdit ? 'Save' : 'Add task'}
-            </Button>
-          </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              {editing ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="text-destructive"
+                  onClick={() => {
+                    if (occurrence) {
+                      setAsking({ action: 'delete', scopes: ['this', 'future', 'all'] })
+                      return
+                    }
+                    actions.remove(editing)
+                    onClose()
+                  }}
+                >
+                  <Trash2 data-icon="inline-start" /> Delete
+                </Button>
+              ) : null}
+              <Button
+                type="submit"
+                className="ml-auto min-h-11 px-6"
+                disabled={problems.length > 0}
+              >
+                {isEdit ? 'Save' : 'Add task'}
+              </Button>
+            </div>
+          )}
         </form>
       </DialogContent>
     </Dialog>

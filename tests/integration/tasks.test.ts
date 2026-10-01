@@ -65,20 +65,19 @@ describe('task repository (real project)', () => {
     const id = randomUUID()
     created.push(id)
 
-    const task = await repo.create(id, draft())
+    const read = async () => (await repo.listDay(DAY)).find((t) => t.id === id)
+
+    await repo.create(id, draft())
+    const task = await read()
     expect(task).toMatchObject({ id, startTime: '09:30', durationMin: 45, color: 'blue' })
-    expect(task.subtasks).toEqual([{ id: 's1', title: 'step', done: false }])
+    expect(task?.subtasks).toEqual([{ id: 's1', title: 'step', done: false }])
 
-    expect((await repo.listDay(DAY)).map((t) => t.id)).toContain(id)
-
-    const done = await repo.update(id, {
-      completedAt: '2099-01-15T10:00:00.000Z',
-      startTime: '11:00',
-    })
-    expect(done.completedAt).not.toBeNull()
-    expect(done.startTime).toBe('11:00')
+    await repo.update(id, { completedAt: '2099-01-15T10:00:00.000Z', startTime: '11:00' })
+    const done = await read()
+    expect(done?.completedAt).not.toBeNull()
+    expect(done?.startTime).toBe('11:00')
     // The database trigger stamps updated_at; the client never sets it.
-    expect(done.updatedAt >= task.updatedAt).toBe(true)
+    expect((done?.updatedAt ?? '') >= (task?.updatedAt ?? '~')).toBe(true)
 
     await repo.update(id, { date: null, startTime: null, completedAt: null })
     expect((await repo.listDay(DAY)).map((t) => t.id)).not.toContain(id)

@@ -2,7 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 import type { Task } from '@/core/tasks'
 import { createQueryClient } from '@/data/queries/client'
 import { listOfKey, taskKeys } from '@/data/queries/keys'
-import { newTask, settleTasks, writeTaskToCache } from '@/data/queries/tasks'
+import {
+  newTask,
+  settleTasks,
+  shownAs,
+  writeSeriesToCache,
+  writeTaskToCache,
+} from '@/data/queries/tasks'
 
 const NOW = '2026-09-30T00:00:00.000Z'
 
@@ -87,5 +93,105 @@ describe('settleTasks', () => {
     pending.mockReturnValue(1) // only the settling write itself
     await settleTasks(qc)
     expect(invalidate).toHaveBeenCalledWith({ queryKey: taskKeys.all })
+  })
+})
+
+describe('recurring occurrences in the cache', () => {
+  const SERIES = '11111111-1111-4111-8111-111111111111'
+  const daily = { rule: { freq: 'daily' as const, interval: 1, weekdays: [] }, until: null }
+  const occ = (date: string, extra: Partial<Task> = {}) =>
+    task({
+      id: `${SERIES}:${date}`,
+      date,
+      recurrence: {
+        seriesId: SERIES,
+        occurrenceDate: date,
+        rule: daily.rule,
+        start: '2026-10-01',
+        until: null,
+      },
+      ...extra,
+    })
+
+  function cacheWith(...tasks: Task[]) {
+    const qc = createQueryClient()
+    for (const date of ['2026-10-01', '2026-10-02', '2026-10-03']) {
+      qc.setQueryData(
+        taskKeys.day(date),
+        tasks.filter((t) => t.date === date),
+      )
+    }
+    const day = (date: string) => qc.getQueryData<Task[]>(taskKeys.day(date)) ?? []
+    return { qc, day }
+  }
+
+  it('shows a new series as its first occurrence, or nothing when the rule skips the start', () => {
+    const base = task({ id: SERIES })
+    expect(shownAs(base, null)).toBe(base)
+    expect(shownAs({ ...base, date: null }, daily)).toEqual({ ...base, date: null })
+    expect(shownAs(base, daily)).toMatchObject({
+      id: `${SERIES}:2026-10-01`,
+      recurrence: { seriesId: SERIES, start: '2026-10-01' },
+    })
+    // 2026-10-01 is a Thursday.
+    const mondays = { rule: { freq: 'weekly' as const, interval: 1, weekdays: [1] }, until: null }
+    expect(shownAs(base, mondays)).toBeNull()
+  })
+
+  it('applies one occurrence, a cancel, series edits, splits and removals', () => {
+    const { qc, day } = cacheWith(
+      occ('2026-10-01'),
+      occ('2026-10-02'),
+      occ('2026-10-03'),
+      task({ id: 'plain', date: '2026-10-02' }),
+    )
+
+    writeSeriesToCache(qc, { kind: 'occurrence', task: occ('2026-10-01', { completedAt: NOW }) })
+    expect(day('2026-10-01')[0]?.completedAt).toBe(NOW)
+
+    writeSeriesToCache(qc, {
+      kind: 'series',
+      seriesId: SERIES,
+      patch: { title: 'Run', date: '2026-10-05' },
+    })
+    expect(
+      day('2026-10-02')
+        .map((t) => t.title)
+        .sort(),
+    ).toEqual(['Run', 'T'])
+    expect(day('2026-10-02').find((t) => t.recurrence)?.date).toBe('2026-10-02')
+
+    // A new rule is left to the refetch.
+    writeSeriesToCache(qc, {
+      kind: 'series',
+      seriesId: SERIES,
+      patch: { title: 'Swim' },
+      repeat: null,
+    })
+    expect(day('2026-10-01')[0]?.title).toBe('Run')
+
+    const next = {
+      id: 'n',
+      draft: { ...occ('2026-10-02'), title: 'Later', startTime: '06:00' },
+      repeat: daily,
+      completedAt: null,
+    }
+    writeSeriesToCache(qc, { kind: 'split', seriesId: SERIES, from: '2026-10-02', next })
+    expect(day('2026-10-01')[0]?.title).toBe('Run')
+    expect(day('2026-10-03')[0]).toMatchObject({ title: 'Later', startTime: '06:00' })
+
+    const weekly = {
+      ...next,
+      repeat: { rule: { freq: 'weekly' as const, interval: 1, weekdays: [1] }, until: null },
+    }
+    writeSeriesToCache(qc, { kind: 'split', seriesId: SERIES, from: '2026-10-03', next: weekly })
+    expect(day('2026-10-03')).toEqual([])
+
+    writeSeriesToCache(qc, { kind: 'cancel', task: occ('2026-10-02') })
+    expect(day('2026-10-02').map((t) => t.id)).toEqual(['plain'])
+
+    writeSeriesToCache(qc, { kind: 'remove-series', seriesId: SERIES })
+    expect(day('2026-10-01')).toEqual([])
+    expect(day('2026-10-02').map((t) => t.id)).toEqual(['plain'])
   })
 })
