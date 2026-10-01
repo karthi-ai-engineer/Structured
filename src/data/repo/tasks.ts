@@ -9,7 +9,7 @@ import { formatRule } from '@/core/recurrence'
 import { expandSeriesRows, missingSeriesIds } from '@/core/series'
 import { sharedPatch, type NextTask, type RepeatSpec, type SeriesWrite } from '@/core/seriesEdits'
 import type { Task, TaskDraft, TaskPatch } from '@/core/tasks'
-import type { TablesUpdate } from '@/data/database.types'
+import type { Json, TablesUpdate } from '@/data/database.types'
 import { toDbErrorCode } from '@/data/errors'
 import { draftToInsert, patchToUpdate, rowToTask, type TaskRow } from '@/data/mappers'
 import type { Db } from '@/data/supabase'
@@ -115,28 +115,20 @@ export function createTasksRepo(db: Db): TasksRepo {
     return [...plainRows.data.map(rowToTask), ...occurrences]
   }
 
-  async function updateSeries(seriesId: string, patch: TaskPatch, repeat?: RepeatSpec | null) {
-    const master: TablesUpdate<'tasks'> = { ...patchToUpdate(patch) }
-    if (repeat !== undefined) Object.assign(master, repeatColumns(repeat))
+  /** "All" (or a rewrite from the first occurrence): one transaction in `update_series`. */
+  async function updateSeries(write: Extract<SeriesWrite, { kind: 'series' }>) {
+    const patch: TablesUpdate<'tasks'> = patchToUpdate(write.patch)
+    if (write.repeat !== undefined) Object.assign(patch, repeatColumns(write.repeat))
     // Only a series that stops repeating (becoming one task) keeps a completion.
-    if (repeat !== null) delete master.completed_at
-    await check(db.from('tasks').update(master).eq('id', seriesId))
-    if (repeat !== undefined) {
-      // A new rule moves the dates: occurrences changed on their own no longer line up, so they
-      // are dropped. Completed ones stay as history.
-      await check(
-        db
-          .from('tasks')
-          .update({ deleted_at: nowIso() })
-          .eq('series_id', seriesId)
-          .is('completed_at', null)
-          .is('deleted_at', null),
-      )
-    }
-    const shared = patchToUpdate(sharedPatch(patch))
-    if (Object.keys(shared).length > 0) {
-      await check(db.from('tasks').update(shared).eq('series_id', seriesId).is('deleted_at', null))
-    }
+    if (write.repeat !== null) delete patch.completed_at
+    await check(
+      db.rpc('update_series', {
+        p_series_id: write.seriesId,
+        p_patch: patch as Json,
+        p_shared: patchToUpdate(sharedPatch(write.shared)) as Json,
+        p_reset: write.reset,
+      }),
+    )
   }
 
   return {
@@ -184,13 +176,14 @@ export function createTasksRepo(db: Db): TasksRepo {
           )
           return
         case 'series':
-          await updateSeries(write.seriesId, write.patch, write.repeat)
+          await updateSeries(write)
           return
         case 'split':
           await check(
             db.rpc('split_series', {
               p_series_id: write.seriesId,
               p_from: write.from,
+              p_shift: write.shift,
               ...(write.next ? { p_new: nextJson(write.next) } : {}),
             }),
           )

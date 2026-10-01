@@ -149,43 +149,69 @@ describe('recurring occurrences in the cache', () => {
     writeSeriesToCache(qc, { kind: 'occurrence', task: occ('2026-10-01', { completedAt: NOW }) })
     expect(day('2026-10-01')[0]?.completedAt).toBe(NOW)
 
+    // All: the shared fields show at once on every occurrence.
     writeSeriesToCache(qc, {
       kind: 'series',
       seriesId: SERIES,
-      patch: { title: 'Run', date: '2026-10-05' },
+      patch: { title: 'Run' },
+      shared: { title: 'Run' },
+      reset: false,
     })
     expect(
       day('2026-10-02')
         .map((t) => t.title)
         .sort(),
     ).toEqual(['Run', 'T'])
-    expect(day('2026-10-02').find((t) => t.recurrence)?.date).toBe('2026-10-02')
 
-    // A new rule is left to the refetch.
+    // A reset (dates move) is left to the refetch; a new end date hides what lies beyond it.
     writeSeriesToCache(qc, {
       kind: 'series',
       seriesId: SERIES,
       patch: { title: 'Swim' },
-      repeat: null,
+      shared: {},
+      reset: true,
+      repeat: { ...daily, until: '2026-10-02' },
     })
     expect(day('2026-10-01')[0]?.title).toBe('Run')
+    expect(day('2026-10-03')).toEqual([])
 
+    // A split with the same rule and days: the occurrences stay, with the new values.
+    const { qc: qc2, day: day2 } = cacheWith(
+      occ('2026-10-01'),
+      occ('2026-10-02'),
+      occ('2026-10-03'),
+    )
     const next = {
-      id: 'n',
+      id: '22222222-2222-4222-8222-222222222222',
       draft: { ...occ('2026-10-02'), title: 'Later', startTime: '06:00' },
       repeat: daily,
       completedAt: null,
     }
-    writeSeriesToCache(qc, { kind: 'split', seriesId: SERIES, from: '2026-10-02', next })
-    expect(day('2026-10-01')[0]?.title).toBe('Run')
-    expect(day('2026-10-03')[0]).toMatchObject({ title: 'Later', startTime: '06:00' })
+    writeSeriesToCache(qc2, { kind: 'split', seriesId: SERIES, from: '2026-10-02', shift: 0, next })
+    expect(day2('2026-10-01')[0]?.title).toBe('T')
+    expect(day2('2026-10-03')[0]).toMatchObject({ title: 'Later', startTime: '06:00' })
 
-    const weekly = {
-      ...next,
-      repeat: { rule: { freq: 'weekly' as const, interval: 1, weekdays: [1] }, until: null },
-    }
-    writeSeriesToCache(qc, { kind: 'split', seriesId: SERIES, from: '2026-10-03', next: weekly })
-    expect(day('2026-10-03')).toEqual([])
+    // Moved by a day: replaced, and the new series' first occurrence shows at once.
+    writeSeriesToCache(qc2, {
+      kind: 'split',
+      seriesId: SERIES,
+      from: '2026-10-02',
+      shift: 1,
+      next: { ...next, draft: { ...next.draft, date: '2026-10-03' } },
+    })
+    expect(day2('2026-10-02')).toEqual([])
+    expect(day2('2026-10-03').map((t) => t.id)).toEqual([`${next.id}:2026-10-03`])
+
+    // Repeating turned off: the one-off task shows, with its completion.
+    const { qc: qc3, day: day3 } = cacheWith(occ('2026-10-01'), occ('2026-10-02'))
+    writeSeriesToCache(qc3, {
+      kind: 'split',
+      seriesId: SERIES,
+      from: '2026-10-02',
+      shift: 0,
+      next: { ...next, repeat: null, completedAt: NOW },
+    })
+    expect(day3('2026-10-02')).toMatchObject([{ id: next.id, completedAt: NOW, recurrence: null }])
 
     writeSeriesToCache(qc, { kind: 'cancel', task: occ('2026-10-02') })
     expect(day('2026-10-02').map((t) => t.id)).toEqual(['plain'])

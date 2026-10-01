@@ -9,7 +9,7 @@
 //   update what the cache can predict (shared fields, removals) and leave the rest, such as a
 //   new rule, to the refetch on settle.
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { nowIso, type ISODate } from '@/core/dates'
+import { addDays, nowIso, type ISODate } from '@/core/dates'
 import { occursOn, sameRule } from '@/core/recurrence'
 import { generatedOccurrence } from '@/core/series'
 import { sharedPatch, type RepeatSpec, type SeriesWrite } from '@/core/seriesEdits'
@@ -96,20 +96,34 @@ export function writeSeriesToCache(qc: QueryClient, write: SeriesWrite): void {
     case 'remove-series':
       mapSeriesInCache(qc, write.seriesId, null, () => null)
       return
-    case 'series':
-      if (write.repeat === undefined) {
-        const shared = sharedPatch(write.patch)
-        mapSeriesInCache(qc, write.seriesId, null, (t) => applyPatch(t, shared))
-      }
+    case 'series': {
+      // A reset moves dates: left to the refetch. Otherwise the edited fields show at once.
+      if (!write.reset)
+        mapSeriesInCache(qc, write.seriesId, null, (t) => applyPatch(t, write.shared))
+      const until = write.repeat?.until
+      if (until) mapSeriesInCache(qc, write.seriesId, addDays(until, 1), () => null)
       return
+    }
     case 'split': {
-      // Same rule: the occurrences stay, with the new values. Otherwise they are replaced.
       const next = write.next
-      mapSeriesInCache(qc, write.seriesId, write.from, (t) =>
-        next?.repeat && t.recurrence && sameRule(next.repeat.rule, t.recurrence.rule)
-          ? applyPatch(t, sharedPatch(next.draft))
-          : null,
-      )
+      // Same rule, same days: the occurrences stay, with the new values.
+      if (next?.repeat && write.shift === 0) {
+        const rule = next.repeat.rule
+        const shared = sharedPatch(next.draft)
+        mapSeriesInCache(qc, write.seriesId, write.from, (t) =>
+          t.recurrence && sameRule(rule, t.recurrence.rule) ? applyPatch(t, shared) : null,
+        )
+        return
+      }
+      // Otherwise they are replaced: show the new first occurrence (or one-off task) right away.
+      mapSeriesInCache(qc, write.seriesId, write.from, () => null)
+      if (next) {
+        const shown = shownAs(
+          { ...newTask(next.id, next.draft, nowIso()), completedAt: next.completedAt },
+          next.repeat,
+        )
+        if (shown) writeTaskToCache(qc, shown.id, shown)
+      }
     }
   }
 }

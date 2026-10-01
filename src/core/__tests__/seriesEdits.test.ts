@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { parseRule, type RepeatRule } from '../recurrence.ts'
 import {
+  changedFields,
+  changesOf,
   planDelete,
   planEdit,
-  repeatChanged,
   scopesFor,
   sharedPatch,
   type RepeatSpec,
@@ -21,15 +22,20 @@ function rule(text: string): RepeatRule {
 
 const DAILY: RepeatSpec = { rule: rule('FREQ=DAILY'), until: null }
 
-function occurrence(date: string, extra: Partial<Task> = {}): Task {
+/** An occurrence of a series starting `start` (2026-10-01 by default, a Thursday). */
+function occurrence(
+  occurrenceDate: string,
+  extra: Partial<Task> = {},
+  series: { rule?: RepeatRule; start?: string; until?: string | null } = {},
+): Task {
   return {
-    id: `${SERIES}:${date}`,
+    id: `${SERIES}:${occurrenceDate}`,
     title: 'Gym',
     notes: null,
     icon: 'dumbbell',
     color: 'green',
     subtasks: [{ id: 's', title: 'Stretch', done: true }],
-    date,
+    date: occurrenceDate,
     startTime: '07:00',
     durationMin: 60,
     isAllDay: false,
@@ -39,10 +45,10 @@ function occurrence(date: string, extra: Partial<Task> = {}): Task {
     updatedAt: '2026-09-01T00:00:00Z',
     recurrence: {
       seriesId: SERIES,
-      occurrenceDate: date,
-      rule: DAILY.rule,
-      start: '2026-10-01',
-      until: null,
+      occurrenceDate,
+      rule: series.rule ?? DAILY.rule,
+      start: series.start ?? '2026-10-01',
+      until: series.until ?? null,
     },
     ...extra,
   }
@@ -56,38 +62,104 @@ function draftOf(task: Task, extra: Partial<TaskDraft> = {}): TaskDraft {
 describe('scopes', () => {
   const occ = occurrence('2026-10-05')
   it('offers every scope when only fields change', () => {
-    expect(repeatChanged(occ, DAILY)).toBe(false)
-    expect(scopesFor(occ, DAILY)).toEqual(['this', 'future', 'all'])
+    expect(changesOf(occ, draftOf(occ), DAILY)).toEqual({ date: false, rule: false, until: false })
+    expect(scopesFor(occ, draftOf(occ, { title: 'Run' }), DAILY)).toEqual(['this', 'future', 'all'])
   })
-  it('a new rule or end date cannot apply to one occurrence', () => {
-    expect(scopesFor(occ, { rule: rule('FREQ=WEEKLY;BYDAY=MO'), until: null })).toEqual([
-      'future',
-      'all',
-    ])
-    expect(scopesFor(occ, { ...DAILY, until: '2026-12-31' })).toEqual(['future', 'all'])
+  it('a moved occurrence: this one, or this and future (never all)', () => {
+    expect(scopesFor(occ, draftOf(occ, { date: '2026-10-06' }), DAILY)).toEqual(['this', 'future'])
   })
-  it('stopping the repeat applies from this occurrence on', () => {
-    expect(scopesFor(occ, null)).toEqual(['future'])
+  it('a new rule, or turning the repeat off, applies from here on', () => {
+    const weekly = { rule: rule('FREQ=WEEKLY;BYDAY=MO'), until: null }
+    expect(scopesFor(occ, draftOf(occ), weekly)).toEqual(['future'])
+    expect(scopesFor(occ, draftOf(occ), null)).toEqual(['future'])
+  })
+  it('a new end date alone is a change to the whole series', () => {
+    expect(scopesFor(occ, draftOf(occ), { ...DAILY, until: '2026-12-31' })).toEqual(['all'])
+    expect(
+      scopesFor(occ, draftOf(occ, { date: '2026-10-06' }), { ...DAILY, until: '2026-12-31' }),
+    ).toEqual(['future'])
   })
   it('refuses a task that is not an occurrence', () => {
-    expect(() => scopesFor({ ...occ, recurrence: null }, DAILY)).toThrow(/Not an occurrence/)
+    expect(() => scopesFor({ ...occ, recurrence: null }, draftOf(occ), DAILY)).toThrow(
+      /Not an occurrence/,
+    )
   })
 })
 
-describe('planEdit', () => {
-  const occ = occurrence('2026-10-05', { completedAt: '2026-10-05T08:00:00Z' })
+describe('changedFields', () => {
+  it('only what differs; subtasks as an undone template when the list changed', () => {
+    const occ = occurrence('2026-10-05')
+    expect(changedFields(occ, draftOf(occ))).toEqual({})
+    expect(changedFields(occ, draftOf(occ, { title: 'Run', durationMin: 45 }))).toEqual({
+      title: 'Run',
+      durationMin: 45,
+    })
+    // Ticking a subtask is progress, not a change to the list.
+    expect(
+      changedFields(occ, draftOf(occ, { subtasks: [{ id: 's', title: 'Stretch', done: false }] })),
+    ).toEqual({})
+    expect(
+      changedFields(
+        occ,
+        draftOf(occ, {
+          subtasks: [
+            { id: 's', title: 'Stretch', done: true },
+            { id: 't', title: 'Cool down', done: true },
+          ],
+        }),
+      ),
+    ).toEqual({
+      subtasks: [
+        { id: 's', title: 'Stretch', done: false },
+        { id: 't', title: 'Cool down', done: false },
+      ],
+    })
+  })
+})
 
+describe('planEdit: this and all', () => {
   it('this: the occurrence with its new values', () => {
+    const occ = occurrence('2026-10-05')
     const plan = planEdit(occ, draftOf(occ, { startTime: '09:00' }), DAILY, 'this', NEW_ID)
     expect(plan).toMatchObject({ kind: 'occurrence', task: { id: occ.id, startTime: '09:00' } })
   })
 
-  it('future: splits at the occurrence and starts a new series with an undone template', () => {
+  it('all: only the edited fields, so other occurrences keep their own values', () => {
+    // This occurrence was moved to 09:00 on its own; renaming it for all keeps the series at 07:00.
+    const occ = occurrence('2026-10-05', { startTime: '09:00' })
+    const plan = planEdit(occ, draftOf(occ, { title: 'Run' }), DAILY, 'all', NEW_ID)
+    expect(plan).toEqual({
+      kind: 'series',
+      seriesId: SERIES,
+      patch: { title: 'Run' },
+      shared: { title: 'Run' },
+      reset: false,
+    })
+  })
+
+  it('all with a new end date keeps the per-occurrence changes (no reset)', () => {
+    const occ = occurrence('2026-10-05')
+    const until = { ...DAILY, until: '2026-12-31' }
+    expect(planEdit(occ, draftOf(occ), until, 'all', NEW_ID)).toEqual({
+      kind: 'series',
+      seriesId: SERIES,
+      patch: {},
+      shared: {},
+      reset: false,
+      repeat: until,
+    })
+  })
+})
+
+describe('planEdit: this and future', () => {
+  it('splits at the occurrence and starts a new series with an undone template', () => {
+    const occ = occurrence('2026-10-05', { completedAt: '2026-10-05T08:00:00Z' })
     const plan = planEdit(occ, draftOf(occ, { startTime: '06:30' }), DAILY, 'future', NEW_ID)
     expect(plan).toEqual({
       kind: 'split',
       seriesId: SERIES,
       from: '2026-10-05',
+      shift: 0,
       next: {
         id: NEW_ID,
         draft: draftOf(occ, {
@@ -100,55 +172,117 @@ describe('planEdit', () => {
     })
   })
 
-  it('future: moved earlier, the split starts at the new date', () => {
-    const plan = planEdit(occ, draftOf(occ, { date: '2026-10-03' }), DAILY, 'future', NEW_ID)
-    expect(plan).toMatchObject({ kind: 'split', from: '2026-10-03' })
-  })
-
-  it('future with repeating turned off: a one-off task that keeps its completion', () => {
-    const plan = planEdit(occ, draftOf(occ), null, 'future', NEW_ID)
+  it('moving a weekly occurrence a day later moves the weekday too', () => {
+    // Mondays from 2026-10-05; the 12th moves to Tuesday the 13th.
+    const mondays = rule('FREQ=WEEKLY;BYDAY=MO')
+    const occ = occurrence('2026-10-12', {}, { rule: mondays, start: '2026-10-05' })
+    const plan = planEdit(
+      occ,
+      draftOf(occ, { date: '2026-10-13' }),
+      { rule: mondays, until: null },
+      'future',
+      NEW_ID,
+    )
     expect(plan).toMatchObject({
       kind: 'split',
-      next: {
-        repeat: null,
-        completedAt: '2026-10-05T08:00:00Z',
-        draft: { subtasks: occ.subtasks },
-      },
+      from: '2026-10-12',
+      shift: 1,
+      next: { draft: { date: '2026-10-13' }, repeat: { rule: { weekdays: [2] } } },
     })
   })
 
-  it('future from the first occurrence is all', () => {
-    const first = occurrence('2026-10-01')
-    const plan = planEdit(first, draftOf(first, { title: 'Run' }), DAILY, 'future', NEW_ID)
-    expect(plan).toMatchObject({ kind: 'series', patch: { title: 'Run', date: '2026-10-01' } })
-    expect(plan).not.toHaveProperty('repeat')
+  it('moved earlier: the split starts at the new date', () => {
+    const occ = occurrence('2026-10-05')
+    const plan = planEdit(occ, draftOf(occ, { date: '2026-10-03' }), DAILY, 'future', NEW_ID)
+    expect(plan).toMatchObject({ kind: 'split', from: '2026-10-03', shift: -2 })
   })
 
-  it('all: shifts the series start by the date change and passes a new rule', () => {
-    const weekly = { rule: rule('FREQ=WEEKLY;BYDAY=TU'), until: null }
-    const plan = planEdit(occ, draftOf(occ, { date: '2026-10-06' }), weekly, 'all', NEW_ID)
-    expect(plan).toMatchObject({
+  it('an occurrence moved on its own keeps the series on its days', () => {
+    // Monthly on the 5th; Oct 5 was moved to Oct 6 on its own. Renaming it from here on keeps
+    // the 5th (the series is anchored at the occurrence's own slot, not its moved date).
+    const monthly = rule('FREQ=MONTHLY')
+    const occ = occurrence(
+      '2026-10-05',
+      { date: '2026-10-06' },
+      { rule: monthly, start: '2026-01-05' },
+    )
+    const plan = planEdit(
+      occ,
+      draftOf(occ, { title: 'Rent' }),
+      { rule: monthly, until: null },
+      'future',
+      NEW_ID,
+    )
+    expect(plan).toMatchObject({ kind: 'split', from: '2026-10-05', shift: 0 })
+    expect(plan.kind === 'split' && plan.next?.draft.date).toBe('2026-10-05')
+  })
+
+  it('a new rule starts at this occurrence (monthly "on the 15th" from Oct 15)', () => {
+    const occ = occurrence('2026-10-15')
+    const monthly = { rule: rule('FREQ=MONTHLY'), until: null }
+    expect(planEdit(occ, draftOf(occ), monthly, 'future', NEW_ID)).toMatchObject({
+      kind: 'split',
+      from: '2026-10-15',
+      next: { draft: { date: '2026-10-15' }, repeat: monthly },
+    })
+  })
+
+  it('turning the repeat off: a one-off task that keeps its completion', () => {
+    const occ = occurrence('2026-10-05', { completedAt: 'x' })
+    expect(planEdit(occ, draftOf(occ), null, 'future', NEW_ID)).toMatchObject({
+      kind: 'split',
+      from: '2026-10-05',
+      next: { repeat: null, completedAt: 'x', draft: { subtasks: occ.subtasks } },
+    })
+  })
+})
+
+describe('planEdit: this and future from the first occurrence (the whole series)', () => {
+  const first = occurrence('2026-10-01', { completedAt: 'x' })
+
+  it('fields only: like all', () => {
+    expect(planEdit(first, draftOf(first, { title: 'Run' }), DAILY, 'future', NEW_ID)).toEqual({
       kind: 'series',
       seriesId: SERIES,
-      patch: { date: '2026-10-02', subtasks: [{ id: 's', done: false }] },
+      patch: { title: 'Run' },
+      shared: { title: 'Run' },
+      reset: false,
+    })
+  })
+
+  it('a new rule or a move rewrites the series and resets the open overrides', () => {
+    const weekly = { rule: rule('FREQ=WEEKLY;BYDAY=TH'), until: null }
+    expect(planEdit(first, draftOf(first), weekly, 'future', NEW_ID)).toMatchObject({
+      kind: 'series',
+      patch: { date: '2026-10-01', subtasks: [{ done: false }] },
+      reset: true,
       repeat: weekly,
     })
+    expect(
+      planEdit(first, draftOf(first, { date: '2026-10-02' }), DAILY, 'future', NEW_ID),
+    ).toMatchObject({ kind: 'series', patch: { date: '2026-10-02' }, reset: true, repeat: DAILY })
   })
 
-  it('all with repeating turned off (from the first occurrence): the series becomes this task', () => {
-    const first = occurrence('2026-10-01', { completedAt: 'x' })
-    const plan = planEdit(first, draftOf(first, { date: '2026-10-02' }), null, 'future', NEW_ID)
-    expect(plan).toEqual({
+  it('a new end date only: kept overrides', () => {
+    const until = { ...DAILY, until: '2026-11-30' }
+    expect(planEdit(first, draftOf(first), until, 'future', NEW_ID)).toMatchObject({
       kind: 'series',
-      seriesId: SERIES,
-      patch: { ...draftOf(first, { date: '2026-10-02' }), completedAt: 'x' },
-      repeat: null,
+      reset: false,
+      repeat: until,
     })
   })
 
-  it('all for an occurrence moved to the inbox keeps the series start', () => {
-    const plan = planEdit(occ, draftOf(occ, { date: null }), DAILY, 'all', NEW_ID)
-    expect(plan).toMatchObject({ kind: 'series', patch: { date: '2026-10-01' } })
+  it('turning the repeat off: the series becomes this one task', () => {
+    expect(planEdit(first, draftOf(first, { date: '2026-10-02' }), null, 'future', NEW_ID)).toEqual(
+      {
+        kind: 'series',
+        seriesId: SERIES,
+        patch: { ...draftOf(first, { date: '2026-10-02' }), completedAt: 'x' },
+        shared: {},
+        reset: true,
+        repeat: null,
+      },
+    )
   })
 })
 
@@ -160,6 +294,7 @@ describe('planDelete', () => {
       kind: 'split',
       seriesId: SERIES,
       from: '2026-10-05',
+      shift: 0,
       next: null,
     })
     expect(planDelete(occ, 'all')).toEqual({ kind: 'remove-series', seriesId: SERIES })

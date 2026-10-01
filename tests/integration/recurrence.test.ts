@@ -115,7 +115,9 @@ describe('recurring tasks (real project)', () => {
     await repo.applySeriesWrite(planDelete(await one('2099-02-05'), 'this'))
     expect(await day('2099-02-05')).toEqual([])
 
-    // All: a new title reaches the template and the completed override alike.
+    // All: a new title reaches the template and the completed override alike, in one
+    // transaction (update_series). The moved occurrence keeps its own time (only the title
+    // was edited).
     const sixth = await one('2099-02-06')
     await repo.applySeriesWrite(
       planEdit(sixth, draftOf(sixth, { title: `${title} renamed` }), DAILY, 'all', ''),
@@ -125,6 +127,15 @@ describe('recurring tasks (real project)', () => {
       title: `${title} renamed`,
       completedAt: expect.any(String),
     })
+    expect((await day('2099-02-04')).map((t) => t.startTime).sort()).toEqual(['07:00', '10:00'])
+
+    // All, with a new end date only: the cancelled 5th stays cancelled, nothing after the end.
+    const until = { ...DAILY, until: '2099-03-31' }
+    const sixthAgain = await one('2099-02-06')
+    await repo.applySeriesWrite(planEdit(sixthAgain, draftOf(sixthAgain), until, 'all', ''))
+    expect(await day('2099-02-05')).toEqual([])
+    expect(await day('2099-04-01')).toEqual([])
+    expect(await day('2099-03-31')).toHaveLength(1)
 
     // This and future, from the 6th: the 7th was completed before, and stays completed.
     await repo.applySeriesWrite({
@@ -135,15 +146,17 @@ describe('recurring tasks (real project)', () => {
     created.push(nextId)
     const sixthNow = await one('2099-02-06')
     await repo.applySeriesWrite(
-      planEdit(sixthNow, draftOf(sixthNow, { startTime: '06:00' }), DAILY, 'future', nextId),
+      planEdit(sixthNow, draftOf(sixthNow, { startTime: '06:00' }), until, 'future', nextId),
     )
     expect(await one('2099-02-05').catch(() => null)).toBeNull()
     expect(await one('2099-02-06')).toMatchObject({
       id: `${nextId}:2099-02-06`,
       startTime: '06:00',
     })
+    // The completed 7th moved to the new series, with the edit (06:00).
     expect(await one('2099-02-07')).toMatchObject({
       id: `${nextId}:2099-02-07`,
+      startTime: '06:00',
       completedAt: expect.any(String),
     })
     expect((await one('2099-02-01')).startTime).toBe('07:00') // the old series is untouched
@@ -157,8 +170,64 @@ describe('recurring tasks (real project)', () => {
 
     // The split refuses a date that is not after the series start (atomic: nothing changes).
     await expect(
-      repo.applySeriesWrite({ kind: 'split', seriesId: nextId, from: '2099-02-06', next: null }),
+      repo.applySeriesWrite({
+        kind: 'split',
+        seriesId: nextId,
+        from: '2099-02-06',
+        shift: 0,
+        next: null,
+      }),
     ).rejects.toBeInstanceOf(DataError)
     expect(await day('2099-02-08')).toHaveLength(1)
+  })
+
+  it('moves a weekly series with its completed occurrence ("this and future", a day later)', async () => {
+    const seriesId = randomUUID()
+    const nextId = randomUUID()
+    created.push(seriesId, nextId)
+    const title = `${PREFIX} weekly ${seriesId.slice(0, 8)}`
+    const mondays = parseRule('FREQ=WEEKLY;BYDAY=MO')
+    if (!mondays) throw new Error('rule')
+    const weekly: RepeatSpec = { rule: mondays, until: null }
+    await repo.create(
+      seriesId,
+      {
+        title,
+        notes: null,
+        icon: null,
+        color: 'blue',
+        subtasks: [],
+        date: '2099-03-02', // a Monday
+        startTime: '18:00',
+        durationMin: 45,
+        isAllDay: false,
+      },
+      weekly,
+    )
+    const on = async (date: string) =>
+      (await repo.listDay(date)).filter((t) => t.title.startsWith(PREFIX))
+
+    // Complete Monday the 9th, then move it to Tuesday the 10th for this and future.
+    const [ninth] = await on('2099-03-09')
+    if (!ninth) throw new Error('no occurrence on the 9th')
+    await repo.applySeriesWrite({
+      kind: 'occurrence',
+      task: { ...ninth, completedAt: '2099-03-09T19:00:00.000Z' },
+    })
+    const [done] = await on('2099-03-09')
+    if (!done) throw new Error('no completed occurrence')
+    await repo.applySeriesWrite(
+      planEdit(done, draftOf(done, { date: '2099-03-10' }), weekly, 'future', nextId),
+    )
+
+    expect(await on('2099-03-02')).toHaveLength(1) // history stays on Monday
+    expect(await on('2099-03-09')).toEqual([])
+    expect(await on('2099-03-10')).toMatchObject([
+      { id: `${nextId}:2099-03-10`, completedAt: expect.any(String) },
+    ])
+    expect(await on('2099-03-16')).toEqual([])
+    expect(await on('2099-03-17')).toMatchObject([
+      { id: `${nextId}:2099-03-17`, completedAt: null },
+    ])
   })
 })

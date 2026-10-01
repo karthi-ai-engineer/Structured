@@ -13,7 +13,7 @@ import {
   type Subtask,
   type TaskDraft,
 } from '@/core/tasks'
-import { planDelete, planEdit, repeatChanged, scopesFor, type EditScope } from '@/core/seriesEdits'
+import { changesOf, planDelete, planEdit, scopesFor, type EditScope } from '@/core/seriesEdits'
 import { DEFAULT_ICON, TASK_ICONS, TaskIcon } from '@/components/TaskIcon'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -107,11 +107,13 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
     if (problems.length > 0) return
     const clean = cleanDraft()
     if (occurrence) {
+      const changes = changesOf(occurrence, clean, repeatSpec)
       const unchanged =
         JSON.stringify(clean) === JSON.stringify(initialDraft(request, settings.defaultDuration)) &&
-        !repeatChanged(occurrence, repeatSpec)
+        !changes.rule &&
+        !changes.until
       if (unchanged) onClose()
-      else setAsking({ action: 'save', scopes: scopesFor(occurrence, repeatSpec) })
+      else setAsking({ action: 'save', scopes: scopesFor(occurrence, clean, repeatSpec) })
       return
     }
     // A completed task moved to the inbox is reopened: the inbox lists only open tasks, so it

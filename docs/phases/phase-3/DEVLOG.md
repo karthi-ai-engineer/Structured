@@ -46,3 +46,21 @@
 - "This and future" from the series' first day behaves like "All".
 - The defaults appear once per database. Deleting them does not bring them back (the marker stays).
 - **E2E:** one full run had 2 failures on time-text assertions that did not reproduce in two full reruns (10 of 10 each). Watch for it in QA.
+
+### Code review, round 1 (PR #24): changes requested; 9 findings, all fixed
+- **New scope rules:** "All" changes only the fields the user edited, plus the end date. Date and rule changes are offered as "This and future" only. This fixes:
+  - the weekly move: weekdays now shift with the move
+  - an edit of a moved occurrence shifting the series: the series is now anchored at the occurrence's own slot
+  - duplicates after an "All" date shift: that edit no longer exists
+  - a rule anchored to the series start: the new series now starts at the edited occurrence
+  - an end-date change wiping the per-day changes: there is no reset for an end date
+  - "All" overwriting the per-day values: only the changed fields are sent
+- **`0004_series_updates`:**
+  - `split_series` takes `p_shift`; completed occurrences move with the new series and take its values
+  - the new `update_series` makes "All" one transaction
+- **Optimistic split:** the one-off task, or the new series' first occurrence, shows at once.
+- **Tests:**
+  - every reviewer scenario as a unit test
+  - two live-database tests: the "all" rename keeps a moved occurrence's own time; an end-date change keeps a cancelled day; a weekly series moved a day later carries its completed occurrence
+  - `npm run verify`: 937 tests
+

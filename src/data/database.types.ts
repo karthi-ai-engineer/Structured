@@ -357,7 +357,21 @@ export type Database = {
         Returns: boolean
       }
       split_series: {
-        Args: { p_from: string; p_new?: Json; p_series_id: string }
+        Args: {
+          p_from: string
+          p_new?: Json
+          p_series_id: string
+          p_shift?: number
+        }
+        Returns: undefined
+      }
+      update_series: {
+        Args: {
+          p_patch: Json
+          p_reset?: boolean
+          p_series_id: string
+          p_shared?: Json
+        }
         Returns: undefined
       }
     }

@@ -90,6 +90,13 @@ export function formatRule(rule: RepeatRule): string {
   return text
 }
 
+/** A weekly rule with its weekdays moved by `days` (for a series moved by that many days);
+ *  other rules are unchanged. */
+export function shiftWeekdays(rule: RepeatRule, days: number): RepeatRule {
+  if (rule.freq !== 'weekly' || rule.weekdays.length === 0 || days % 7 === 0) return rule
+  return { ...rule, weekdays: sortedDays(rule.weekdays.map((d) => (((d + days) % 7) + 7) % 7)) }
+}
+
 /** Problems with a rule the editor built; empty when it can be saved. */
 export function validateRule(rule: RepeatRule): string[] {
   const problems: string[] = []

@@ -10,6 +10,7 @@ import {
   presetOf,
   presetRule,
   sameRule,
+  shiftWeekdays,
   validateRule,
   type RepeatRule,
 } from '../recurrence.ts'
@@ -219,5 +220,17 @@ describe('presets', () => {
     expect(presetOf(rule('FREQ=DAILY;INTERVAL=2'), start)).toBe('custom')
     // Weekly on another weekday than the start's is custom.
     expect(presetOf(rule('FREQ=WEEKLY;BYDAY=MO'), start)).toBe('custom')
+  })
+})
+
+describe('shiftWeekdays', () => {
+  it('moves weekly days, wrapping around the week; other rules stay', () => {
+    expect(shiftWeekdays(rule('FREQ=WEEKLY;BYDAY=MO,SA'), 1).weekdays).toEqual([0, 2])
+    expect(shiftWeekdays(rule('FREQ=WEEKLY;BYDAY=MO'), -1).weekdays).toEqual([0])
+    const weekly = rule('FREQ=WEEKLY;BYDAY=WE')
+    expect(shiftWeekdays(weekly, 14)).toBe(weekly)
+    expect(shiftWeekdays(daily, 3)).toBe(daily)
+    const implicit: RepeatRule = { freq: 'weekly', interval: 1, weekdays: [] }
+    expect(shiftWeekdays(implicit, 2)).toBe(implicit)
   })
 })

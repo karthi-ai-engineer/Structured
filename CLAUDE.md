@@ -147,8 +147,9 @@ Enforced by ESLint (`eslint.config.js`, run by `npm run lint`) and, for `src/cor
   - **Occurrences** are never stored. `src/core/series.ts` expands them per range, with the id `<seriesId>:<occurrenceDate>`, which stays the same when the occurrence moves.
   - **Edit and delete scopes** are planned in `src/core/seriesEdits.ts` (pure) and run by `TasksRepo.applySeriesWrite`:
     - *this* upserts the override (`onConflict: series_id,occurrence_date`)
-    - *future* calls the `split_series` database function (atomic)
-    - *all* updates the series and propagates the shared fields to its overrides
+    - *future* calls the `split_series` database function (atomic). A move by N days moves the new series by N days; weekly rules shift their weekdays. Completed occurrences move along, with the edit.
+    - *all* calls `update_series` (atomic) with only the fields the user changed, plus the end date
+  - **Date and rule changes** are offered only as *this and future*, so history never changes retroactively. From the first occurrence, *this and future* rewrites the whole series.
   - **Defaults:** "Rise and Shine" / "Wind Down" are created once by the `seed_default_tasks` function, guarded by `settings.seeded_at` (`src/data/queries/seed.ts`).
   - **MCP:** `listRange` and `listDates` include occurrences (`repeats` and `read_only` in the task view). Writes refuse occurrence ids; "overdue" and search cover one-off tasks only.
 
