@@ -9,9 +9,12 @@
  * - `all`:    the edited fields (and the end date) for the whole series.
  *
  * Rules that keep history and dates unambiguous:
- * - Moving one occurrence to another day is always `this` only. Moving the series itself is a
- *   rule change ("every week on Tuesday"), and a rule change applies from here on (`future`),
- *   starting on the date the user picked.
+ * - A rule change applies from here on (`future`), starting on the date the user picked.
+ * - Moving an occurrence of a daily, monthly or yearly series can also move the series from here
+ *   on: their days follow the start date. A weekly series lists its weekdays, so moving one of
+ *   its occurrences is `this` only; moving the series is a rule change ("every week on
+ *   Tuesday").
+ * - A new day and a new end date in one save are refused: save them one at a time.
  * - Only fields the user actually changed reach occurrences that have their own values.
  * - Completed occurrences stay completed. A split moves them to the new series, along with this
  *   occurrence's own changes (so a moved occurrence stays where it was put).
@@ -106,10 +109,18 @@ export function changesOf(task: Task, draft: TaskDraft, repeat: RepeatSpec | nul
 }
 
 /** The scopes the editor offers for saving `draft` / `repeat` on an occurrence. */
+/** Whether the series' days follow its start date (so moving the start moves them). */
+function followsStart(rule: RepeatRule): boolean {
+  return rule.freq !== 'weekly'
+}
+
+/** The scopes the editor offers for saving `draft` / `repeat` on an occurrence. Empty means
+ *  the change cannot be saved in one go (a new day and a new end date). */
 export function scopesFor(task: Task, draft: TaskDraft, repeat: RepeatSpec | null): EditScope[] {
   const c = changesOf(task, draft, repeat)
-  if (c.rule || (c.date && c.until)) return ['future']
-  if (c.date) return ['this']
+  if (c.rule) return ['future']
+  if (c.date && c.until) return []
+  if (c.date) return followsStart(recurrenceOf(task).rule) ? ['this', 'future'] : ['this']
   if (c.until) return ['all']
   return ['this', 'future', 'all']
 }
@@ -140,6 +151,9 @@ export function planEdit(
   newId: string,
 ): SeriesWrite {
   const r = recurrenceOf(task)
+  if (!scopesFor(task, draft, repeat).includes(scope)) {
+    throw new Error(`"${scope}" is not offered for this change`)
+  }
   if (scope === 'this') return { kind: 'occurrence', task: applyPatch(task, draft) }
 
   const c = changesOf(task, draft, repeat)
@@ -176,8 +190,8 @@ export function planEdit(
     }
   }
 
-  // A new series: on the date the user picked (with a new rule), or on this occurrence's own
-  // slot, so the pattern continues (with the same rule).
+  // A new series: on the date the user picked (a new rule, or a series that follows its start),
+  // or on this occurrence's own slot, so the pattern continues.
   const start = c.date && draft.date !== null ? draft.date : r.occurrenceDate
   const from = start < r.occurrenceDate ? start : r.occurrenceDate
   if (from <= r.start) {
@@ -189,7 +203,7 @@ export function planEdit(
       patch: reset ? { ...template(draft), date: start } : changed,
       shared: reset ? {} : sharedPatch(changed),
       reset,
-      ...(reset || c.until ? { repeat } : {}),
+      ...(reset ? { repeat } : {}),
     }
   }
   return {

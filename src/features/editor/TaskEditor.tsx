@@ -431,12 +431,17 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
               <p className="text-sm font-medium">
                 {asking.action === 'save' ? 'Save the change for' : 'Delete'}
               </p>
+              {asking.action === 'save' && asking.scopes.length === 0 ? (
+                <p className="text-sm text-destructive">
+                  Save a new day and a new end date one at a time: first one, then the other.
+                </p>
+              ) : null}
               {asking.action === 'save' &&
               asking.scopes.length === 1 &&
               asking.scopes[0] === 'this' ? (
                 <p className="text-xs text-muted-foreground">
-                  A new day applies to this task only. To move every future task, change Repeat (for
-                  example to another weekday).
+                  In a weekly series a new day applies to this task only. To move every future task,
+                  change Repeat to the new weekday.
                 </p>
               ) : null}
               {asking.scopes.map((scope) => (

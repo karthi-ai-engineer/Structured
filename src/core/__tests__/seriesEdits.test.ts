@@ -65,8 +65,19 @@ describe('scopes', () => {
     expect(changesOf(occ, draftOf(occ), DAILY)).toEqual({ date: false, rule: false, until: false })
     expect(scopesFor(occ, draftOf(occ, { title: 'Run' }), DAILY)).toEqual(['this', 'future', 'all'])
   })
-  it('a moved occurrence: this one only (moving the series is a rule change)', () => {
-    expect(scopesFor(occ, draftOf(occ, { date: '2026-10-06' }), DAILY)).toEqual(['this'])
+  it('a moved occurrence: this one, or the series from here on when its days follow the start', () => {
+    expect(scopesFor(occ, draftOf(occ, { date: '2026-10-06' }), DAILY)).toEqual(['this', 'future'])
+    const monthly = rule('FREQ=MONTHLY')
+    const rent = occurrence('2026-10-05', {}, { rule: monthly, start: '2026-01-05' })
+    expect(
+      scopesFor(rent, draftOf(rent, { date: '2026-10-06' }), { rule: monthly, until: null }),
+    ).toEqual(['this', 'future'])
+    // Weekly series list their weekdays: moving the series is a rule change.
+    const mondays = rule('FREQ=WEEKLY;BYDAY=MO')
+    const gym = occurrence('2026-10-12', {}, { rule: mondays, start: '2026-10-05' })
+    expect(
+      scopesFor(gym, draftOf(gym, { date: '2026-10-13' }), { rule: mondays, until: null }),
+    ).toEqual(['this'])
   })
   it('a new rule, or turning the repeat off, applies from here on', () => {
     const weekly = { rule: rule('FREQ=WEEKLY;BYDAY=MO'), until: null }
@@ -75,9 +86,27 @@ describe('scopes', () => {
   })
   it('a new end date alone is a change to the whole series', () => {
     expect(scopesFor(occ, draftOf(occ), { ...DAILY, until: '2026-12-31' })).toEqual(['all'])
+    // A new day and a new end date at once cannot be saved together.
     expect(
       scopesFor(occ, draftOf(occ, { date: '2026-10-06' }), { ...DAILY, until: '2026-12-31' }),
-    ).toEqual(['future'])
+    ).toEqual([])
+  })
+  it('planEdit refuses a scope that is not offered', () => {
+    const mondays = rule('FREQ=WEEKLY;BYDAY=MO')
+    const gym = occurrence('2026-10-12', {}, { rule: mondays, start: '2026-10-05' })
+    const spec = { rule: mondays, until: '2026-12-31' }
+    expect(() =>
+      planEdit(gym, draftOf(gym, { date: '2026-10-13' }), spec, 'future', NEW_ID),
+    ).toThrow(/not offered/)
+    expect(() =>
+      planEdit(
+        gym,
+        draftOf(gym, { date: '2026-10-13' }),
+        { ...spec, until: null },
+        'future',
+        NEW_ID,
+      ),
+    ).toThrow(/not offered/)
   })
   it('refuses a task that is not an occurrence', () => {
     expect(() => scopesFor({ ...occ, recurrence: null }, draftOf(occ), DAILY)).toThrow(
@@ -220,6 +249,25 @@ describe('planEdit: this and future', () => {
     })
   })
 
+  it('a monthly series moved a day later from here on starts on the new day', () => {
+    const monthly = rule('FREQ=MONTHLY')
+    const rent = occurrence('2026-10-05', {}, { rule: monthly, start: '2026-01-05' })
+    expect(
+      planEdit(
+        rent,
+        draftOf(rent, { date: '2026-10-06' }),
+        { rule: monthly, until: null },
+        'future',
+        NEW_ID,
+      ),
+    ).toMatchObject({
+      kind: 'split',
+      from: '2026-10-05',
+      keep: null,
+      next: { draft: { date: '2026-10-06' }, repeat: { rule: monthly } },
+    })
+  })
+
   it('a new rule starts at this occurrence (monthly "on the 15th" from Oct 15)', () => {
     const occ = occurrence('2026-10-15')
     const monthly = { rule: rule('FREQ=MONTHLY'), until: null }
@@ -265,15 +313,6 @@ describe('planEdit: this and future from the first occurrence (the whole series)
     expect(
       planEdit(first, draftOf(first, { date: '2026-10-02' }), DAILY, 'future', NEW_ID),
     ).toMatchObject({ kind: 'series', patch: { date: '2026-10-02' }, reset: true, repeat: DAILY })
-  })
-
-  it('a new end date only: kept overrides', () => {
-    const until = { ...DAILY, until: '2026-11-30' }
-    expect(planEdit(first, draftOf(first), until, 'future', NEW_ID)).toMatchObject({
-      kind: 'series',
-      reset: false,
-      repeat: until,
-    })
   })
 
   it('turning the repeat off: the series becomes this one task', () => {

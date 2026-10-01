@@ -149,7 +149,11 @@ Enforced by ESLint (`eslint.config.js`, run by `npm run lint`) and, for `src/cor
     - *this* upserts the override (`onConflict: series_id,occurrence_date`)
     - *future* calls the `split_series` database function (atomic). Completed occurrences, and the edited occurrence's own override (`p_keep`), move to the new series with its values.
     - *all* calls `update_series` (atomic) with only the fields the user changed, plus the end date
-  - **Moving one occurrence** to another day is *this* only. Moving the series is a rule change (for example "every week on Tuesday").
+  - **Moving one occurrence** to another day:
+    - daily, monthly and yearly series offer *this* or *this and future* (the new series starts on the picked day)
+    - weekly series offer *this* only; moving them is a rule change ("every week on Tuesday")
+    - a new day plus a new end date must be saved one at a time
+    - `planEdit` refuses any scope that `scopesFor` does not offer
   - **Rule changes** are offered only as *this and future*, starting on the picked date, so history never changes retroactively. From the first occurrence, *this and future* rewrites the whole series.
   - **Defaults:** "Rise and Shine" / "Wind Down" are created once by the `seed_default_tasks` function, guarded by `settings.seeded_at` (`src/data/queries/seed.ts`).
   - **MCP:** `listRange` and `listDates` include occurrences (`repeats` and `read_only` in the task view). Writes refuse occurrence ids; "overdue" and search cover one-off tasks only.

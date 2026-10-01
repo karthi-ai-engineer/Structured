@@ -72,3 +72,12 @@
 - **Optimistic split:** it keeps the completed (and kept) occurrences with the new values, and adds the new series' occurrences to every cached day.
 - **Live database:** a weekly series moved to Tuesday from a later Monday keeps its Monday history and completion. A moved, renamed monthly occurrence stays on its day, and the pattern continues on the 5th.
 
+### Code review, round 3: findings 3 and 9 to 12 fixed; 1 new major issue; fixed
+- **The issue:** a new day plus a new end date with the same rule made the occurrence vanish.
+- **The fix:**
+  - Daily, monthly and yearly series (whose days follow the start) can move "this and future" on the picked day. This also closes the review's note that a monthly series could not move to another day of the month.
+  - Weekly moves stay "this" only.
+  - A new day plus a new end date asks for two saves.
+  - `planEdit` now throws for any scope `scopesFor` does not offer.
+- **The MCP protocol tests** get a 20 s timeout: one timed out once under the full coverage run, and passes alone.
+
