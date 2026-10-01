@@ -759,12 +759,12 @@ Each phase ends with something **deployed and usable**. Work in small commits.
 - **Done when:** on desktop and phone browser, you can plan today, check tasks off, use the inbox, and an edit on one device appears on the other within about 1 s.
 
 ### Phase 2: MCP server, "Claude plans my day" (size: M)
-- [ ] `server/db.ts`, `server/mcp/server.ts`, `api/mcp/[secret].ts` with secret check
-- [ ] Core modules the tools need: `recurrence.ts` (basic), `schedule.ts`, `slots.ts`, `energy.ts`, `schemas.ts` + tests
-- [ ] Tools: get_context, get_schedule, list_inbox, find_free_slots, list_overdue, search_tasks, create_tasks (with dry_run and warnings), update_task, move_tasks, set_completion, delete_tasks, add_subtasks, undo_batch
-- [ ] Prompts: plan_day, replan_overdue
-- [ ] Test with MCP Inspector, then add as a custom connector in Claude.ai and in Claude Code
-- [ ] Settings page shows the connector URL
+- [x] `server/store.ts` (admin client and task store), `server/mcp/server.ts`, `api/mcp/[secret].ts` with secret check
+- [x] Core modules the tools need: `schedule.ts` (free slots, overlaps, warnings), `rows.ts`, `icons.ts` + tests. Recurrence and energy come with their features in Phase 3; the zod schemas live with the tools.
+- [x] Tools: get_context, get_schedule, list_inbox, find_free_slots, list_overdue, search_tasks, create_tasks (with dry_run and warnings), update_task, move_tasks, set_completion, delete_tasks, add_subtasks, undo_batch
+- [x] Prompts: plan_day, replan_overdue
+- [x] Tested with the official MCP client (unit, live database, and the production endpoint). Adding the connector in Claude is the owner's step, with the URL from `.env.local`.
+- [x] ~~Settings page shows the connector URL~~ Dropped: it would put the connector secret in the browser bundle. The URL is built from `.env.local` instead (README, "Connect Claude").
 - **Done when:** in the Claude app, "plan my tomorrow" creates tasks that appear live on the timeline, and `undo_batch` removes them.
 
 ### Phase 3: Structured parity (size: L)
