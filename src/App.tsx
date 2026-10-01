@@ -11,7 +11,9 @@ import { useSeedDefaults } from '@/data/queries/seed'
 import { MonthView } from '@/features/calendar/MonthView'
 import { ReplanView } from '@/features/calendar/ReplanView'
 import { WeekView } from '@/features/calendar/WeekView'
+import { useAlertScheduler } from '@/features/alerts/useAlertScheduler'
 import { EditorProvider } from '@/features/editor/EditorProvider'
+import { FocusView } from '@/features/focus/FocusView'
 import { InboxView } from '@/features/inbox/InboxView'
 import { SettingsView } from '@/features/settings/SettingsView'
 import { ThemeSync } from '@/features/settings/ThemeSync'
@@ -28,6 +30,7 @@ function Background() {
   const saving = useIsMutating() > 0
   useRealtimeSync()
   useSeedDefaults()
+  useAlertScheduler()
   useEffect(() => guardUnload(saving), [saving])
   useEffect(() => {
     if (!isDbConfigured) return
@@ -51,6 +54,7 @@ export function AppRoutes() {
           <Route path="month" element={<MonthView />} />
           <Route path="month/:month" element={<MonthView />} />
           <Route path="replan" element={<ReplanView />} />
+          <Route path="focus/:id" element={<FocusView />} />
           <Route path="inbox" element={<InboxView />} />
           <Route path="settings" element={<SettingsView />} />
           <Route path="*" element={<Navigate to="/" replace />} />

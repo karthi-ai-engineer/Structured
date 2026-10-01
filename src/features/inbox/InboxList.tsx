@@ -39,6 +39,8 @@ export function InboxList() {
       startTime: null,
       durationMin: settings.defaultDuration,
       isAllDay: false,
+      energy: null,
+      alerts: null,
     })
     setTitle('')
   }

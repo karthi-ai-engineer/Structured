@@ -152,3 +152,50 @@
 - **"Today" on an all-day task:** it moves only the date, with no stray start time.
 - **The month grid:** a plain section of links instead of grid roles that promised arrow-key cell navigation.
 
+## WP4: Energy monitor, focus mode and alerts (2026-10-01)
+
+### What was done
+- **Energy (E1):**
+  - Each task has a level: 🪷 relaxing (−1), ⭕ neutral, 🔥 to 🔥🔥🔥 (1 to 3).
+  - Points are level × started half hours (`src/core/energy.ts`).
+  - A green, orange or red chip shows used / limit in the day header and on each day of the week view.
+  - Settings: on or off, and the daily limit.
+  - MCP: `energy` on create and update (undoable), `energy {used, limit}` per day in `get_schedule`, and a warning when a plan goes over the limit.
+- **Focus (F1, F2):** `/focus/:id` is a full-screen timer with a progress ring.
+  - The intervals (default 25/5) fit the time the task has left.
+  - Pause and resume, skip, and mark done; Space pauses and Esc leaves.
+  - Each finished segment is logged to `focus_sessions`.
+  - Start it from the editor (timed tasks) or from the running task's timer button on the timeline.
+- **Alerts (N1, N2):**
+  - Per task: at the start, N minutes before, and at the end. The settings hold the defaults.
+  - While the app is open, a desktop notification (after "Turn on" in Settings) or an in-app notice.
+- **Database:** `0006` makes the series functions carry `energy` and `alerts`. `0007` keeps an empty alert list empty in `update_series`; 0006 turned it into null by mistake, and an applied migration is never edited.
+
+### Commands run
+- `npm run db:push`, then `npm run db:types` (no type change) and `npm run db:migrations`
+- `npm run verify`: 974 tests; `src/core` coverage 99.4 / 96.6 / 100 / 99.8 %
+- `npm run test:e2e`: 15 of 15, including the new `focus.spec.ts`. On Playwright's fake clock it covers:
+  - the energy chip
+  - the alert at the start, fired as an in-app notice
+  - focus: the interval count, pause holding the timer, the break, skip break, and mark done
+
+### Notes for testers
+- **Alerts only fire while the app is open.** Background push needs a service worker and is planned with the PWA work in WP6.
+- **The e2e cleanup** also deletes focus sessions logged against `__test__` tasks.
+
+### Code review, round 1 (PR #30): changes requested; 1 major and 7 minor findings, all fixed
+- **Major: a moved task never alerted again,** because the alert key ignored the time. The key now includes the alert's minute.
+- **Minor fixes:**
+  - after sleep or a hidden tab, alerts catch up 5 minutes at most (no burst)
+  - a new day checks from midnight, so alerts at 00:00 to 00:01 that load late still fire
+  - a reload on `/focus/:id` waits for the task instead of showing a finished timer (pinned by e2e)
+  - every focus segment logs its real start and end, including the partial segment on Skip, Leave or Mark done
+  - an emptied number field in Settings goes back to its value instead of saving 0
+  - a 0-minute task alerts once per minute
+  - Space pauses only when no button has focus, and focus moves into the focus screen
+
+### Code review, round 2: approved; 2 of its 3 minors fixed before merge
+- **A long focus on another day's task:** the timer now watches that day's list, so the list stays cached and the task cannot vanish.
+- **A 0-minute task with alerts at both its start and end:** it now says "starts now" (the start wins the shared minute).
+- **Accepted:** after a pause, logged segment start times shift by the pause; the lengths stay right.
+

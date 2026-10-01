@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { useAppSettings } from '@/data/queries/settings'
 import { useDayTasks, useOverdueTasks, useTaskActions } from '@/data/queries/tasks'
 import { ViewSwitch } from '@/features/calendar/ViewSwitch'
+import { EnergyChip } from '@/features/energy/EnergyChip'
 import { useEditor } from '@/features/editor/editorContext'
 import { GapRow } from '@/features/timeline/GapRow'
 import { useTaskDrop } from '@/features/timeline/taskDrag'
@@ -93,9 +94,14 @@ export function DayView() {
           <h1 className="text-2xl font-semibold tracking-tight">
             {formatDateLabel(selected, 'MMMM yyyy')}
           </h1>
-          <p className="text-sm text-muted-foreground">
-            {selected === today ? 'Today, ' : ''}
-            {formatDateLabel(selected, 'EEEE d')}
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>
+              {selected === today ? 'Today, ' : ''}
+              {formatDateLabel(selected, 'EEEE d')}
+            </span>
+            {settings.energyEnabled && query.data ? (
+              <EnergyChip tasks={query.data} limit={settings.energyLimit} />
+            ) : null}
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">

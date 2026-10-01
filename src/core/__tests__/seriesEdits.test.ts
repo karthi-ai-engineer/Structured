@@ -39,6 +39,8 @@ function occurrence(
     startTime: '07:00',
     durationMin: 60,
     isAllDay: false,
+    energy: null,
+    alerts: null,
     completedAt: null,
     inboxOrder: 0,
     createdAt: '2026-09-01T00:00:00Z',
@@ -55,8 +57,33 @@ function occurrence(
 }
 
 function draftOf(task: Task, extra: Partial<TaskDraft> = {}): TaskDraft {
-  const { title, notes, icon, color, subtasks, date, startTime, durationMin, isAllDay } = task
-  return { title, notes, icon, color, subtasks, date, startTime, durationMin, isAllDay, ...extra }
+  const {
+    title,
+    notes,
+    icon,
+    color,
+    subtasks,
+    date,
+    startTime,
+    durationMin,
+    isAllDay,
+    energy,
+    alerts,
+  } = task
+  return {
+    title,
+    notes,
+    icon,
+    color,
+    subtasks,
+    date,
+    startTime,
+    durationMin,
+    isAllDay,
+    energy,
+    alerts,
+    ...extra,
+  }
 }
 
 describe('scopes', () => {

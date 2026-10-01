@@ -26,6 +26,8 @@ function task(id: string, extra: Partial<Task> = {}): Task {
     inboxOrder: 0,
     createdAt: '2026-09-01T00:00:00Z',
     updatedAt: '2026-09-01T00:00:00Z',
+    energy: null,
+    alerts: null,
     recurrence: null,
     ...extra,
   }

@@ -1,6 +1,7 @@
 // Global setup and teardown for the e2e suite: soft-deletes every live task whose title starts
 // with `__test__` (the same `deleted_at` write the app's Delete button makes), so an aborted run
-// never leaves test tasks in the planner. Reads .env.local; values are never printed.
+// never leaves test tasks in the planner, and deletes focus sessions logged against them. Reads
+// .env.local; values are never printed.
 import { readFileSync } from 'node:fs'
 
 function readEnvLocal(): Record<string, string> {
@@ -31,4 +32,21 @@ export default async function retireTestTasks(): Promise<void> {
   if (!response.ok) throw new Error(`e2e cleanup: HTTP ${response.status}`)
   const rows = (await response.json()) as unknown[]
   if (rows.length > 0) console.log(`e2e cleanup: retired ${rows.length} leftover test task(s)`)
+
+  // Focus sessions logged against test tasks (the focus e2e) are deleted outright.
+  const headers = { apikey: key }
+  const sessions = await fetch(
+    `${url}/rest/v1/focus_sessions?select=id,tasks!inner(title)&tasks.title=like.__test__*`,
+    { headers },
+  )
+  if (!sessions.ok) throw new Error(`e2e cleanup: HTTP ${sessions.status}`)
+  const ids = ((await sessions.json()) as { id: string }[]).map((r) => r.id)
+  if (ids.length > 0) {
+    const removed = await fetch(`${url}/rest/v1/focus_sessions?id=in.(${ids.join(',')})`, {
+      method: 'DELETE',
+      headers,
+    })
+    if (!removed.ok) throw new Error(`e2e cleanup: HTTP ${removed.status}`)
+    console.log(`e2e cleanup: removed ${ids.length} test focus session(s)`)
+  }
 }

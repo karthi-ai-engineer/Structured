@@ -29,6 +29,8 @@ export class MemoryStore implements TaskStore {
     dayStart: '07:00',
     dayEnd: '22:00',
     defaultDuration: 30,
+    energyEnabled: true,
+    energyLimit: 30,
   }
 
   /** Seeds an existing (app-created) task. */
@@ -47,6 +49,8 @@ export class MemoryStore implements TaskStore {
       createdAt: '2099-01-01T00:00:00.000Z',
       updatedAt: '2099-01-01T00:00:00.000Z',
       recurrence: null,
+      energy: null,
+      alerts: null,
       deletedAt: null,
       batchId: null,
       source: 'app',
@@ -77,6 +81,8 @@ export class MemoryStore implements TaskStore {
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       recurrence: r.recurrence,
+      energy: r.energy,
+      alerts: r.alerts ? [...r.alerts] : null,
     }
   }
 

@@ -77,6 +77,8 @@ export const SHARED_FIELDS = [
   'startTime',
   'durationMin',
   'isAllDay',
+  'energy',
+  'alerts',
 ] as const satisfies readonly (keyof TaskDraft)[]
 
 export function sharedPatch(patch: TaskPatch): TaskPatch {
@@ -136,7 +138,9 @@ const subtaskShape = (subtasks: readonly Subtask[]) =>
 /** The fields the user changed: shared fields, plus the subtask list (as a template). */
 export function changedFields(task: Task, draft: TaskDraft): TaskPatch {
   const out: Record<string, unknown> = {}
-  for (const key of SHARED_FIELDS) if (draft[key] !== task[key]) out[key] = draft[key]
+  for (const key of SHARED_FIELDS) {
+    if (JSON.stringify(draft[key]) !== JSON.stringify(task[key])) out[key] = draft[key]
+  }
   if (subtaskShape(draft.subtasks) !== subtaskShape(task.subtasks)) {
     out.subtasks = template(draft).subtasks
   }

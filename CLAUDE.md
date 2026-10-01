@@ -144,6 +144,11 @@ Enforced by ESLint (`eslint.config.js`, run by `npm run lint`) and, for `src/cor
   - `/month` and `/month/YYYY-MM`
   - `/replan`, `/inbox` and `/settings`
   - Vercel's SPA rewrite serves them all.
+- **Energy, focus and alerts (Phase 3):**
+  - `src/core/energy.ts`: points are level × started half hours; green below 80 % of the limit, orange up to it, red above it. Shared with MCP `get_schedule` and the create warnings.
+  - `src/core/alerts.ts`: minutes before the start, with `-1` meaning at the end; `null` follows `settings.default_alerts`. `features/alerts/useAlertScheduler` fires them while the app is open: a desktop notification when allowed (`platform/notifications.ts`), otherwise an in-app notice.
+  - `src/core/focus.ts` plans the intervals (`settings.focus_minutes` / `break_minutes`). `/focus/:id` is the timer, and it logs each segment to `focus_sessions`; an occurrence logs its series id.
+  - The focus timer reads milliseconds through `nowMs()` in `dates.ts` (the only module that reads the clock).
 - **Calendar (Phase 3):**
   - `features/calendar` holds the week, month and Replan views, and the Day / Week / Month switch.
   - Their lists are cached as `['tasks', 'range', from, to]` and `['tasks', 'overdue', today]` (`listOfKey`, `belongsTo`), so every optimistic write reaches them.

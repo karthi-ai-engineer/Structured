@@ -392,6 +392,11 @@ export function nowIso(now: Date = new Date()): string {
   return now.toISOString()
 }
 
+/** The current instant in milliseconds (timers such as focus mode). */
+export function nowMs(): number {
+  return Date.now()
+}
+
 /** Wall-clock minutes since local midnight in `tz` at `now`, 0..1439 (seconds are floored).
  *  The value jumps forward in a DST gap and repeats in a repeated hour. */
 export function nowMinutesIn(tz: string, now: Date = new Date()): number {

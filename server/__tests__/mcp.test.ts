@@ -550,3 +550,46 @@ describe('recurring tasks', () => {
     expect(bad.summary + JSON.stringify(bad.data)).toContain('Not a task id')
   })
 })
+
+describe('energy monitor', () => {
+  it('stores a task energy level, totals each day, and warns over the limit', async () => {
+    store.settings.energyLimit = 10
+    const first = await call('create_tasks', {
+      tasks: [
+        {
+          title: 'Deep work',
+          date: '2099-03-12',
+          start_time: '09:00',
+          duration_min: 120,
+          energy: 2,
+        },
+      ],
+    })
+    expect(first.data.tasks[0]).toMatchObject({ energy: 2 })
+    expect(first.data.tasks[0].warnings).toBeUndefined()
+
+    const day = await call('get_schedule', { start_date: '2099-03-12' })
+    expect(day.data.days[0].energy).toEqual({ used: 8, limit: 10 })
+
+    const more = await call('create_tasks', {
+      dry_run: true,
+      tasks: [
+        { title: 'Workshop', date: '2099-03-12', start_time: '14:00', duration_min: 60, energy: 3 },
+      ],
+    })
+    expect(JSON.stringify(more.data)).toContain('Takes the day over its energy limit (14/10)')
+
+    // update_task changes the level; undo restores it.
+    const id = first.data.tasks[0].id
+    const updated = await call('update_task', { id, energy: -1 })
+    expect(updated.data.task.energy).toBe(-1)
+    await call('undo_batch', { batch_id: updated.data.batch_id })
+    expect(store.rows.get(id)?.energy).toBe(2)
+  })
+
+  it('leaves energy out when the monitor is off', async () => {
+    store.settings.energyEnabled = false
+    const day = await call('get_schedule', { start_date: '2099-03-12' })
+    expect(day.data.days[0].energy).toBeUndefined()
+  })
+})

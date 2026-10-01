@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
-import { AlertTriangle, Check, Inbox, Plus, Repeat, Trash2, X } from 'lucide-react'
+import { useNavigate } from 'react-router'
+import { AlertTriangle, Check, Inbox, Plus, Repeat, Timer, Trash2, X } from 'lucide-react'
 import { formatDuration, nowMinutesIn, todayIn } from '@/core/dates'
 import { plannedTaskWarnings } from '@/core/schedule'
 import { editorWarnings } from '@/core/timeline'
@@ -26,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAppSettings } from '@/data/queries/settings'
 import { useDayTasks, useTaskActions } from '@/data/queries/tasks'
 import type { EditorRequest } from '@/features/editor/editorContext'
+import { AlertsField, EnergyField } from '@/features/editor/EnergyAlertsFields'
 import { RepeatField } from '@/features/editor/RepeatField'
 import {
   initialRepeat,
@@ -37,9 +39,32 @@ import { cn } from '@/lib/utils'
 
 function initialDraft(request: EditorRequest, defaultDuration: number): TaskDraft {
   if (request.mode === 'edit') {
-    const { title, notes, icon, color, subtasks, date, startTime, durationMin, isAllDay } =
-      request.task
-    return { title, notes, icon, color, subtasks, date, startTime, durationMin, isAllDay }
+    const {
+      title,
+      notes,
+      icon,
+      color,
+      subtasks,
+      date,
+      startTime,
+      durationMin,
+      isAllDay,
+      energy,
+      alerts,
+    } = request.task
+    return {
+      title,
+      notes,
+      icon,
+      color,
+      subtasks,
+      date,
+      startTime,
+      durationMin,
+      isAllDay,
+      energy,
+      alerts,
+    }
   }
   return {
     title: '',
@@ -51,6 +76,8 @@ function initialDraft(request: EditorRequest, defaultDuration: number): TaskDraf
     startTime: null,
     durationMin: defaultDuration,
     isAllDay: false,
+    energy: null,
+    alerts: null,
     ...request.defaults,
   }
 }
@@ -64,6 +91,7 @@ const SCOPE_LABELS: Record<EditScope, string> = {
 export function TaskEditor({ request, onClose }: { request: EditorRequest; onClose: () => void }) {
   const settings = useAppSettings()
   const actions = useTaskActions()
+  const navigate = useNavigate()
   const [draft, setDraft] = useState<TaskDraft>(() =>
     initialDraft(request, settings.defaultDuration),
   )
@@ -373,6 +401,18 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
             </fieldset>
           )}
 
+          {settings.energyEnabled ? (
+            <EnergyField value={draft.energy} onChange={(energy) => set({ energy })} />
+          ) : null}
+
+          {scheduled && !draft.isAllDay ? (
+            <AlertsField
+              value={draft.alerts}
+              defaults={settings.defaultAlerts}
+              onChange={(alerts) => set({ alerts })}
+            />
+          ) : null}
+
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-2 text-sm font-medium">Subtasks</legend>
             {draft.subtasks.map((s) => (
@@ -513,6 +553,18 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                   }}
                 >
                   <Trash2 data-icon="inline-start" /> Delete
+                </Button>
+              ) : null}
+              {editing && editing.date !== null && !editing.isAllDay && !editing.completedAt ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    onClose()
+                    void navigate(`/focus/${encodeURIComponent(editing.id)}`)
+                  }}
+                >
+                  <Timer data-icon="inline-start" /> Focus
                 </Button>
               ) : null}
               <Button

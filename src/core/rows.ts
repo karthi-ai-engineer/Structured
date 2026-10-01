@@ -3,7 +3,9 @@
  * Structural types only: nothing here depends on Supabase, so plain Node can load it.
  */
 
+import { toAlerts } from './alerts.ts'
 import { isTime } from './dates.ts'
+import { toEnergyLevel } from './energy.ts'
 import { DEFAULT_TASK_COLOR, isTaskColor, parseSubtasks, type Task } from './tasks.ts'
 
 /** The columns of a `tasks` row this mapping reads (a subset of the generated row type). */
@@ -22,6 +24,8 @@ export interface TaskRowShape {
   inbox_order: number
   created_at: string
   updated_at: string
+  energy?: number | null
+  alerts?: number[] | null
 }
 
 /** 'HH:mm:ss' or 'HH:mm' to 'HH:mm'; null stays null. */
@@ -53,5 +57,7 @@ export function taskFromRow(row: TaskRowShape): Task {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     recurrence: null,
+    energy: toEnergyLevel(row.energy),
+    alerts: toAlerts(row.alerts),
   }
 }

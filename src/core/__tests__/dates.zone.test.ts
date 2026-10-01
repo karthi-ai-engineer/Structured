@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  nowMs,
   assertTimeZone,
   isValidTimeZone,
   msUntilNextDayIn,
@@ -253,5 +254,6 @@ describe('default clock', () => {
     expect(todayIn('Asia/Kolkata')).toBe('2026-09-29')
     expect(nowMinutesIn('Asia/Kolkata')).toBe(10)
     expect(msUntilNextDayIn('Asia/Kolkata')).toBe(85_800_000)
+    expect(nowMs()).toBe(Date.parse('2026-09-28T18:40:00Z'))
   })
 })

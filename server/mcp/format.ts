@@ -41,6 +41,7 @@ export function view(task: Task, warnings?: readonly string[]): Record<string, u
   if (task.completedAt) v.done = true
   if (task.subtasks.length > 0) v.subtasks = task.subtasks
   if (task.notes) v.notes = task.notes
+  if (task.energy !== null) v.energy = task.energy
   if (task.recurrence) {
     v.repeats = describeRule(task.recurrence.rule, task.recurrence.start)
     v.read_only = true
