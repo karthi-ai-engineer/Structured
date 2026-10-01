@@ -26,6 +26,8 @@ function task(overrides: Partial<Task>): Task {
         startTime: '09:00',
         durationMin: 30,
         isAllDay: false,
+        energy: null,
+        alerts: null,
       },
       NOW,
     ),

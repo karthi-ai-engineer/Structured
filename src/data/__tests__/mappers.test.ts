@@ -65,6 +65,8 @@ describe('task mapping', () => {
       startTime: null,
       durationMin: 30,
       isAllDay: false,
+      energy: null,
+      alerts: null,
     })
     expect(insert).toMatchObject({ id: 't2', title: 'Read', date: null, source: 'app' })
     expect(insert.subtasks).toEqual([])
@@ -83,10 +85,14 @@ describe('task mapping', () => {
         startTime: '08:00',
         durationMin: 15,
         isAllDay: true,
+        energy: null,
+        alerts: null,
         completedAt: '2026-10-02T08:00:00Z',
       }),
     ).toEqual({
       title: 'A',
+      energy: null,
+      alerts: null,
       notes: null,
       icon: 'sun',
       color: 'teal',
@@ -151,6 +157,11 @@ describe('settings mapping', () => {
       defaultDuration: 45,
       theme: 'dark',
       updatedAt: '2026-09-30T00:00:00Z',
+      energyEnabled: true,
+      energyLimit: 30,
+      focusMinutes: 25,
+      breakMinutes: 5,
+      defaultAlerts: [0],
     })
   })
 

@@ -1,4 +1,5 @@
-import { AlertTriangle, Check, Repeat } from 'lucide-react'
+import { Link } from 'react-router'
+import { AlertTriangle, Check, Repeat, Timer } from 'lucide-react'
 import { formatDuration, formatTime, toMinutes, type TimeFormat } from '@/core/dates'
 import { colorHex, pillHeight, taskEnd, type Task, type TaskPatch } from '@/core/tasks'
 import { movedStart, resizedDuration } from '@/core/timeline'
@@ -158,6 +159,16 @@ export function TaskRow({
           </span>
         ) : null}
       </button>
+      {progress > 0 && progress < 1 && task.completedAt === null ? (
+        <Link
+          to={`/focus/${encodeURIComponent(task.id)}`}
+          aria-label={`Focus on ${task.title}`}
+          title="Focus"
+          className="flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+        >
+          <Timer className="size-5" />
+        </Link>
+      ) : null}
       <CheckCircle task={task} onToggle={onToggle} />
     </li>
   )

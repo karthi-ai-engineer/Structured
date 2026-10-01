@@ -9,6 +9,7 @@ import { useEditor } from '@/features/editor/editorContext'
 import { CompactTask } from '@/features/calendar/CompactTask'
 import { useStepKeys } from '@/features/calendar/useStepKeys'
 import { ViewSwitch } from '@/features/calendar/ViewSwitch'
+import { EnergyChip } from '@/features/energy/EnergyChip'
 import { QueryState } from '@/features/shell/QueryState'
 import { useClock } from '@/features/timeline/useClock'
 import { cn } from '@/lib/utils'
@@ -103,6 +104,9 @@ export function WeekView() {
                       {formatDateLabel(day, 'd')}
                     </span>
                   </Link>
+                  {settings.energyEnabled && tasks.length > 0 ? (
+                    <EnergyChip tasks={tasks} limit={settings.energyLimit} compact />
+                  ) : null}
                   <button
                     type="button"
                     aria-label={`Add a task on ${formatDateLabel(day, 'EEEE d MMMM')}`}

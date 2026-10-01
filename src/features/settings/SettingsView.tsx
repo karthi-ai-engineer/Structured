@@ -7,7 +7,8 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from 'react'
-import { LoaderCircle } from 'lucide-react'
+import { BellRing, LoaderCircle } from 'lucide-react'
+import { ALERT_CHOICES, alertLabel } from '@/core/alerts'
 import { formatDuration, type WeekStart } from '@/core/dates'
 import { DURATION_PRESETS } from '@/core/tasks'
 import type { SettingsPatch, Theme } from '@/core/settings'
@@ -15,10 +16,16 @@ import { validateSettingsPatch } from '@/core/settings'
 import { DbStatusBadge } from '@/components/DbStatusBadge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { startDbCheck } from '@/data/dbCheck'
 import type { DbStatus } from '@/data/health'
 import { useAppSettings, useUpdateSettings } from '@/data/queries/settings'
 import { isOnline } from '@/platform/network'
+import {
+  notificationState,
+  requestNotifications,
+  type NotificationState,
+} from '@/platform/notifications'
 import { detectTimeZone, listTimeZones } from '@/platform/timezone'
 import { cn } from '@/lib/utils'
 
@@ -130,6 +137,7 @@ export function SettingsView() {
   const settings = useAppSettings()
   const update = useUpdateSettings()
   const [zones] = useState(listTimeZones)
+  const [permission, setPermission] = useState<NotificationState>(notificationState)
 
   function save(patch: SettingsPatch) {
     if (validateSettingsPatch(patch).length === 0) update(patch)
@@ -148,6 +156,39 @@ export function SettingsView() {
       if (e.key === 'Enter') e.currentTarget.blur()
     },
   })
+
+  // Whole-number fields save on blur (or Enter), like the time fields.
+  const numberProps = (
+    key: 'energyLimit' | 'focusMinutes' | 'breakMinutes',
+    min: number,
+    max: number,
+  ) => ({
+    type: 'number',
+    inputMode: 'numeric' as const,
+    min,
+    max,
+    className: 'h-9 w-24',
+    defaultValue: settings[key],
+    onBlur: (e: FocusEvent<HTMLInputElement>) => {
+      const value = Math.round(Number(e.currentTarget.value))
+      if (value !== settings[key] && validateSettingsPatch({ [key]: value }).length === 0) {
+        save({ [key]: value })
+      } else {
+        e.currentTarget.value = String(settings[key])
+      }
+    },
+    onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') e.currentTarget.blur()
+    },
+  })
+
+  function toggleDefaultAlert(minutes: number) {
+    const current = settings.defaultAlerts
+    const next = current.includes(minutes)
+      ? current.filter((m) => m !== minutes)
+      : [...current, minutes]
+    save({ defaultAlerts: next.sort((a, b) => a - b) })
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 pt-4 pb-28 lg:pb-8">
@@ -225,6 +266,96 @@ export function SettingsView() {
             ))}
           </select>
         </Row>
+      </section>
+
+      <section aria-labelledby="s-energy" className="flex flex-col">
+        <h2
+          id="s-energy"
+          className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+        >
+          Energy and focus
+        </h2>
+        <Row label="Energy monitor" htmlFor="set-energy">
+          <Switch
+            id="set-energy"
+            checked={settings.energyEnabled}
+            onCheckedChange={(energyEnabled) => save({ energyEnabled })}
+          />
+        </Row>
+        {settings.energyEnabled ? (
+          <Row label="Daily energy limit" htmlFor="set-energy-limit">
+            <Input
+              key={settings.energyLimit}
+              id="set-energy-limit"
+              {...numberProps('energyLimit', 1, 999)}
+            />
+          </Row>
+        ) : null}
+        <Row label="Focus interval (minutes)" htmlFor="set-focus">
+          <Input
+            key={settings.focusMinutes}
+            id="set-focus"
+            {...numberProps('focusMinutes', 1, 240)}
+          />
+        </Row>
+        <Row label="Break (minutes)" htmlFor="set-break">
+          <Input
+            key={settings.breakMinutes}
+            id="set-break"
+            {...numberProps('breakMinutes', 0, 120)}
+          />
+        </Row>
+      </section>
+
+      <section aria-labelledby="s-alerts" className="flex flex-col">
+        <h2
+          id="s-alerts"
+          className="mb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+        >
+          Alerts
+        </h2>
+        <div className="flex flex-col gap-2 border-b py-3">
+          <span className="text-sm font-medium">Default alerts for timed tasks</span>
+          <div role="group" aria-label="Default alerts" className="flex flex-wrap gap-2">
+            {ALERT_CHOICES.map((m) => (
+              <button
+                key={m}
+                type="button"
+                aria-pressed={settings.defaultAlerts.includes(m)}
+                onClick={() => toggleDefaultAlert(m)}
+                className={cn(
+                  'min-h-9 rounded-full border px-3 text-sm',
+                  settings.defaultAlerts.includes(m)
+                    ? 'border-foreground bg-muted'
+                    : 'hover:bg-muted',
+                )}
+              >
+                {alertLabel(m)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Row label="Desktop notifications">
+          {permission === 'granted' ? (
+            <span className="text-sm text-muted-foreground">On</span>
+          ) : permission === 'denied' ? (
+            <span className="text-sm text-muted-foreground">Blocked in the browser settings</span>
+          ) : permission === 'unsupported' ? (
+            <span className="text-sm text-muted-foreground">Not available here</span>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void requestNotifications().then(setPermission)}
+            >
+              <BellRing data-icon="inline-start" /> Turn on
+            </Button>
+          )}
+        </Row>
+        <p className="pt-2 text-xs text-muted-foreground">
+          Alerts appear while the app is open. Without desktop notifications they show inside the
+          app.
+        </p>
       </section>
 
       <section aria-labelledby="s-look" className="flex flex-col">
