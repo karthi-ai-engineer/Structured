@@ -141,7 +141,16 @@ Enforced by ESLint (`eslint.config.js`, run by `npm run lint`) and, for `src/cor
 - **Routes:** `/` (today), `/day/YYYY-MM-DD`, `/inbox` and `/settings`. Vercel's SPA rewrite serves them all.
 - **Phone versus desktop:** under `lg`, bottom tabs, a floating add button and a bottom-sheet editor. From `lg`, a sidebar and an inbox panel next to the timeline.
 - **Safety net:** `platform/unload.ts` asks before leaving the page while a mutation is pending.
-- **Deferred to Phase 3:** recurring tasks and the default "Rise and Shine" / "Wind Down" anchors (master plan T18). Phase 1 reads only plain one-off rows (`repeat_rule` and `series_id` null).
+- **Recurring tasks (Phase 3):**
+  - **Rules:** `src/core/recurrence.ts`, an RRULE subset stored in `repeat_rule` (`FREQ=DAILY|WEEKLY|MONTHLY|YEARLY`, `INTERVAL`, weekly `BYDAY`). Monthly and yearly use the last day of shorter months.
+  - **Storage:** a series row has `repeat_rule`, and its `date` is the first occurrence. An override row (`series_id` + `occurrence_date`) is a full copy of one occurrence's own values (moved, edited, completed, or `is_cancelled`).
+  - **Occurrences** are never stored. `src/core/series.ts` expands them per range, with the id `<seriesId>:<occurrenceDate>`, which stays the same when the occurrence moves.
+  - **Edit and delete scopes** are planned in `src/core/seriesEdits.ts` (pure) and run by `TasksRepo.applySeriesWrite`:
+    - *this* upserts the override (`onConflict: series_id,occurrence_date`)
+    - *future* calls the `split_series` database function (atomic)
+    - *all* updates the series and propagates the shared fields to its overrides
+  - **Defaults:** "Rise and Shine" / "Wind Down" are created once by the `seed_default_tasks` function, guarded by `settings.seeded_at` (`src/data/queries/seed.ts`).
+  - **MCP:** `listRange` and `listDates` include occurrences (`repeats` and `read_only` in the task view). Writes refuse occurrence ids; "overdue" and search cover one-off tasks only.
 
 ## MCP server (Phase 2)
 Claude reads and writes the planner through a remote MCP server at `https://<app>/api/mcp/<MCP_SECRET>`. The official `@modelcontextprotocol/server` v2 `createMcpHandler` serves it statelessly: the 2026-07-28 protocol natively, plus the 2025 Streamable HTTP fallback.
