@@ -181,6 +181,7 @@ export type Database = {
           energy_limit: number
           focus_minutes: number
           id: number
+          seeded_at: string | null
           theme: string
           time_format: string
           timezone: string
@@ -197,6 +198,7 @@ export type Database = {
           energy_limit?: number
           focus_minutes?: number
           id?: number
+          seeded_at?: string | null
           theme?: string
           time_format?: string
           timezone?: string
@@ -213,6 +215,7 @@ export type Database = {
           energy_limit?: number
           focus_minutes?: number
           id?: number
+          seeded_at?: string | null
           theme?: string
           time_format?: string
           timezone?: string
@@ -349,7 +352,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      seed_default_tasks: {
+        Args: { p_rise: string; p_today: string; p_wind: string }
+        Returns: boolean
+      }
+      split_series: {
+        Args: { p_from: string; p_new?: Json; p_series_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
