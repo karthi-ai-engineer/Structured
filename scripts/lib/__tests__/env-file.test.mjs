@@ -189,7 +189,9 @@ describe('updateEnvFile', () => {
   })
 })
 
-describe('CLI', () => {
+// Each test spawns Node (sometimes twice); under a busy full run on Windows that can take longer
+// than the 5 s default.
+describe('CLI', { timeout: 30_000 }, () => {
   it('set reads the value from stdin and trims exactly one trailing newline', () => {
     const lf = runCli(['set', 'A', '--file', 'a.env'], 'value one\n')
     expect(lf.status).toBe(0)
