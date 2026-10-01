@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, useEffect, useState } from 'react'
 import { QueryClientProvider, useIsMutating, useQueryClient } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { Notices } from '@/components/Notices'
@@ -8,13 +8,10 @@ import { settingsKey } from '@/data/queries/keys'
 import { isDbConfigured } from '@/data/queries/repos'
 import { useRealtimeSync } from '@/data/queries/realtime'
 import { useSeedDefaults } from '@/data/queries/seed'
-import { MonthView } from '@/features/calendar/MonthView'
-import { ReplanView } from '@/features/calendar/ReplanView'
-import { WeekView } from '@/features/calendar/WeekView'
+
 import { useAlertScheduler } from '@/features/alerts/useAlertScheduler'
 import { EditorProvider } from '@/features/editor/EditorProvider'
-import { FocusView } from '@/features/focus/FocusView'
-import { SearchView } from '@/features/search/SearchView'
+
 import { InboxView } from '@/features/inbox/InboxView'
 import { SettingsView } from '@/features/settings/SettingsView'
 import { ThemeSync } from '@/features/settings/ThemeSync'
@@ -41,6 +38,23 @@ function Background() {
   }, [qc])
   return null
 }
+
+// Screens opened less often load on demand, keeping the first download small.
+const WeekView = lazy(() =>
+  import('@/features/calendar/WeekView').then((m) => ({ default: m.WeekView })),
+)
+const MonthView = lazy(() =>
+  import('@/features/calendar/MonthView').then((m) => ({ default: m.MonthView })),
+)
+const ReplanView = lazy(() =>
+  import('@/features/calendar/ReplanView').then((m) => ({ default: m.ReplanView })),
+)
+const FocusView = lazy(() =>
+  import('@/features/focus/FocusView').then((m) => ({ default: m.FocusView })),
+)
+const SearchView = lazy(() =>
+  import('@/features/search/SearchView').then((m) => ({ default: m.SearchView })),
+)
 
 /** The routes, without a router, so tests can wrap them in a MemoryRouter. */
 export function AppRoutes() {

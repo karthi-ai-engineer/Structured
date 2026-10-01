@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import {
   CalendarDays,
@@ -7,6 +8,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { InboxList } from '@/features/inbox/InboxList'
+import { CommandPalette } from '@/features/palette/CommandPalette'
 import { RouteErrorBoundary } from '@/features/shell/RouteErrorBoundary'
 import { cn } from '@/lib/utils'
 
@@ -51,11 +53,17 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
+        <p className="mt-auto px-3 text-xs text-muted-foreground">
+          <kbd className="rounded border px-1">Ctrl</kbd>{' '}
+          <kbd className="rounded border px-1">K</kbd> for commands
+        </p>
       </aside>
 
       <main className="min-w-0">
         <RouteErrorBoundary key={pathname}>
-          <Outlet />
+          <Suspense fallback={<RouteLoading />}>
+            <Outlet />
+          </Suspense>
         </RouteErrorBoundary>
       </main>
 
@@ -70,6 +78,8 @@ export function AppShell() {
           </div>
         ) : null}
       </aside>
+
+      <CommandPalette />
 
       <nav
         aria-label="Main"
@@ -89,6 +99,15 @@ export function AppShell() {
           </NavLink>
         ))}
       </nav>
+    </div>
+  )
+}
+
+/** Shown for a moment while a screen's code loads. */
+function RouteLoading() {
+  return (
+    <div aria-busy="true" className="flex justify-center py-24 text-sm text-muted-foreground">
+      Loading…
     </div>
   )
 }
