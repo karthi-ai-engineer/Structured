@@ -113,9 +113,14 @@ export default defineConfig([
     rules: { 'react-refresh/only-export-components': 'off' },
   },
   {
-    // MCP protocol tests read the JSON a tool returns; typing every payload would only restate
-    // the tool code. Keep the unsafe-any rules for production code.
-    files: ['server/**/__tests__/**/*.ts', 'tests/integration/mcp.test.ts'],
+    // MCP protocol tests read the JSON a tool returns (typing every payload would only restate
+    // the tool code), and live tests match server values with expect.any(). Keep the unsafe-any
+    // rules for production code.
+    files: [
+      'server/**/__tests__/**/*.ts',
+      'tests/integration/mcp.test.ts',
+      'tests/integration/recurrence.test.ts',
+    ],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
