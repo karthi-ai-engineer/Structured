@@ -2,6 +2,43 @@
 
 All notable changes, per release. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow the roadmap phases (Phase 0 is `v0.0.1`, and Phase n is `v0.n.0`).
 
+## [0.3.0] - 2026-10-01: Phase 3, Structured parity
+
+### Added
+- **Repeating tasks:**
+  - daily, weekdays, weekly on chosen days, monthly (the last day of short months) and yearly; every N; an optional end
+  - edit or delete "this task only", "this and future" or "all"
+  - completed occurrences stay completed
+  - the default "Rise and Shine" and "Wind Down"
+- **Timeline:**
+  - free-time rows (tap to add)
+  - overlap warnings on the timeline and in the editor
+  - drag to move and resize (touch: long press)
+  - drag inbox tasks onto free time (desktop)
+- **Week and month views**, with a Day / Week / Month switch and arrow keys.
+- **Replan:** unfinished tasks from the last 14 days; Today, Tomorrow, Inbox, Done, Delete, or "Fit all into today".
+- **Energy monitor:** an energy level per task; a green, orange or red daily total against your limit.
+- **Focus mode:** a full-screen timer with focus and break intervals fitted to the task's time; sessions are logged.
+- **Alerts:** at the start, before, or at the end of a task. Desktop notifications, or in-app notices.
+- **Quick add:** "Gym tomorrow 7am 1h !high ~2" sets the date, time, duration, priority and energy; "quotes" keep words as typed.
+- **Suggestions:** a new task's icon and color follow its title.
+- **Search** across titles and notes.
+- **Undo** for delete, complete and move.
+- **Duplicate.**
+- **Priority and due date.**
+- **Command palette** (Ctrl/⌘+K), and `/` to search.
+- **Installable app:** opens offline with the last data loaded.
+- **Nightly encrypted database backup**, which also keeps the free database awake.
+- **Claude connector:**
+  - schedules include repeating tasks
+  - energy per day and over-limit warnings
+  - priority and due date on tasks
+  - repeating occurrences are read-only
+
+### Changed
+- Less-used screens and the editor load on demand (a smaller first download).
+- **Database:** migrations `0003` to `0008` (recurring series functions, the seed marker, energy, alerts and priority on series).
+
 ## [0.2.0] - 2026-10-01: Phase 2, Claude connector (MCP server)
 
 ### Added
@@ -72,6 +109,7 @@ All notable changes, per release. The format follows [Keep a Changelog](https://
 - The full Supabase schema (tasks, goals, focus sessions, settings, day notes, templates) with realtime, and a "DB connected" home page.
 - CI on every push and PR; production deploys through GitHub Actions with a smoke check; CodeQL; Dependabot; a protected `main`.
 
+[0.3.0]: https://github.com/karthi-ai-engineer/Structured/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/karthi-ai-engineer/Structured/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/karthi-ai-engineer/Structured/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/karthi-ai-engineer/Structured/releases/tag/v0.0.1
