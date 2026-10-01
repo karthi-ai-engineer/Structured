@@ -57,6 +57,9 @@ export function CommandPalette() {
   useEffect(() => {
     function onKey(e: globalThis.KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        // Not over another dialog (the editor): a command would replace it and lose its edits.
+        const palette = document.getElementById('palette-list')
+        if (!palette && document.querySelector('[role="dialog"]')) return
         e.preventDefault()
         setText('')
         setActive(0)
@@ -140,6 +143,9 @@ export function CommandPalette() {
     return [...matching, ...tasks]
   }, [text, cached, settings.timezone, settings.theme, navigate, editor, updateSettings])
 
+  // The highlight always points at an item (the list changes as tasks load or the text changes).
+  const current = Math.min(Math.max(active, 0), Math.max(items.length - 1, 0))
+
   function choose(item: Item | undefined) {
     if (!item) return
     setOpen(false)
@@ -147,9 +153,9 @@ export function CommandPalette() {
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'ArrowDown') setActive((a) => Math.min(a + 1, items.length - 1))
-    else if (e.key === 'ArrowUp') setActive((a) => Math.max(a - 1, 0))
-    else if (e.key === 'Enter') choose(items[active])
+    if (e.key === 'ArrowDown') setActive(Math.min(current + 1, Math.max(items.length - 1, 0)))
+    else if (e.key === 'ArrowUp') setActive(Math.max(current - 1, 0))
+    else if (e.key === 'Enter') choose(items[current])
     else return
     e.preventDefault()
   }
@@ -168,7 +174,7 @@ export function CommandPalette() {
             role="combobox"
             aria-expanded="true"
             aria-controls="palette-list"
-            aria-activedescendant={items[active] ? `palette-${items[active].id}` : undefined}
+            aria-activedescendant={items[current] ? `palette-${items[current].id}` : undefined}
             aria-label="Command"
             placeholder="Type a command or a task…"
             value={text}
@@ -198,12 +204,12 @@ export function CommandPalette() {
                   key={item.id}
                   id={`palette-${item.id}`}
                   role="option"
-                  aria-selected={i === active}
+                  aria-selected={i === current}
                   onMouseEnter={() => setActive(i)}
                   onClick={() => choose(item)}
                   className={cn(
                     'flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-sm',
-                    i === active && 'bg-muted',
+                    i === current && 'bg-muted',
                   )}
                 >
                   {Icon ? (

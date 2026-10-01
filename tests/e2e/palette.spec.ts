@@ -29,6 +29,10 @@ test('command palette: jump to a screen, open a task, add a task; / searches', a
   await page.keyboard.type('new task')
   await page.keyboard.press('Enter')
   await expect(page.getByRole('dialog').getByLabel('Title')).toBeVisible()
+  // Over the editor, Ctrl+K does nothing (a command would replace it and lose its edits).
+  await page.keyboard.press('Control+k')
+  await expect(page.getByRole('combobox', { name: 'Command' })).toHaveCount(0)
+  await expect(page.getByRole('dialog').getByLabel('Title')).toBeVisible()
   await page.keyboard.press('Escape')
 
   // "/" jumps to search.

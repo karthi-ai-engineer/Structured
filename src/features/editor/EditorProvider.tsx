@@ -1,10 +1,8 @@
-import { Suspense, lazy, useState, type ReactNode } from 'react'
-
-// The editor (and its dialog) loads the first time it opens.
-const TaskEditor = lazy(() =>
-  import('@/features/editor/TaskEditor').then((m) => ({ default: m.TaskEditor })),
-)
+import { Suspense, useState, type ReactNode } from 'react'
+import { EditorBoundary } from '@/features/editor/EditorBoundary'
 import { EditorContext, type EditorApi, type EditorRequest } from '@/features/editor/editorContext'
+import { TaskEditor } from '@/features/shell/screens'
+import { notify } from '@/stores/notices'
 
 /** Hosts the single task editor dialog and lets any screen open it. */
 export function EditorProvider({ children }: { children: ReactNode }) {
@@ -27,9 +25,18 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     <EditorContext value={api}>
       {children}
       {request ? (
-        <Suspense fallback={null}>
-          <TaskEditor key={openCount} request={request} onClose={() => setRequest(null)} />
-        </Suspense>
+        // The editor's code loads the first time it opens; a failure closes it with a notice.
+        <EditorBoundary
+          key={openCount}
+          onError={() => {
+            setRequest(null)
+            notify('Could not open the editor. Check the connection and try again.')
+          }}
+        >
+          <Suspense fallback={null}>
+            <TaskEditor request={request} onClose={() => setRequest(null)} />
+          </Suspense>
+        </EditorBoundary>
       ) : null}
     </EditorContext>
   )

@@ -308,12 +308,13 @@ Values live only in `.env.local` (gitignored), in the Vercel project and in GitH
 | `VITE_SUPABASE_URL` | yes | Config | Config | Config | – |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | yes | Config | Config | Config | – |
 | `SUPABASE_SECRET_KEY` | yes | Secret | – | Config | – |
-| `SUPABASE_DB_PASSWORD` | yes | – | – | Config | yes (backup) |
-| `SUPABASE_PROJECT_REF` | yes | – | – | Config | yes (backup) |
+| `SUPABASE_DB_PASSWORD` | yes | – | – | Config | – |
+| `SUPABASE_PROJECT_REF` | yes | – | – | Config | – |
 | `VERCEL_PROJECT_NAME` | yes | – | – | Config | – |
 | `PROD_URL` | yes | – | – | Config | yes |
 | `MCP_SECRET` | yes | Secret | – | Config | – |
 | `BACKUP_PASSPHRASE` | yes | – | – | Config | yes |
+| `SUPABASE_DB_URL` (session pooler, with the password) | – (built by `node scripts/lib/db-url.mjs`) | – | – | – | yes |
 | `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | in `.vercel/project.json` | – | – | – | yes |
 | `VERCEL_TOKEN` | – | – | – | – | yes |
 
@@ -343,8 +344,9 @@ Rules:
 - **Bot PRs.** The title and body of a bot-authored PR (Dependabot) are not scanned by `check:commits`, because they quote upstream release notes. Its commit messages and authors are always checked.
 - **The Vercel CLI is pinned** to exactly `vercel@61.1.0` in `.github/workflows/deploy.yml`, `scripts/ci/deploy-prod.sh` and `scripts/lib/vercel.mjs`. Bump all three in one commit (`check:hygiene` fails if they differ), and update the version in the docs that quote it.
 - **Nightly backup** (`.github/workflows/backup.yml`, 18:00 UTC, and on demand with `gh workflow run backup.yml`):
-  - the pinned Supabase CLI dumps the schema and the data
-  - the dump is encrypted with `BACKUP_PASSPHRASE` (the artifacts of a public repo are downloadable) and kept for 14 days
+  - the pinned Supabase CLI dumps the schema and the data with `--db-url` through the session pooler (GitHub runners have no IPv6; no access token needed)
+  - one-time setup: `node scripts/lib/db-url.mjs | gh secret set SUPABASE_DB_URL`
+  - the dump is encrypted with `gpg --symmetric` (AES-256, authenticated) using `BACKUP_PASSPHRASE` (the artifacts of a public repo are downloadable) and kept for 14 days
   - it also keeps the free project from pausing
   - restore: see `HANDOFF.md`, "Restore a backup"
 - **Deploys come only from GitHub Actions.** The Vercel Git integration is off, and `vercel.json` has `git.deploymentEnabled: false`. Redeploy with `gh workflow run deploy.yml --ref main`. A local deploy uses the same script (see `HANDOFF.md`).

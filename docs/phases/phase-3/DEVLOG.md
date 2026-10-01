@@ -266,7 +266,7 @@
 
 ### Secrets
 - **New `BACKUP_PASSPHRASE`** (random, 43 characters), in `.env.local`, the Vercel development env (`env:sync-vercel --apply`, so other machines get it) and the GitHub secrets.
-- **`SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD`** were added to the GitHub secrets.
+- **`SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD`** were added to the GitHub secrets for the first design (see the review below: they are no longer used).
 - **A slip:** the first attempt used the wrong `env-file set` syntax, which stored an empty GitHub secret. It was caught by checking the value lengths (never the values) and set again; nothing was printed.
 
 ### Commands run
@@ -274,4 +274,20 @@
 - `npm run test:e2e`: the new `palette.spec.ts`, and the whole suite
 - `npm run test:e2e:pwa`: a production build; the app installs and opens offline with the same tasks
 - **The backup workflow can only be dispatched from `main`.** It is checked after the release merge (see the verification report).
+
+### Code review, round 1 (PR #34): changes requested; 2 major and 6 minor findings, all fixed
+- **Major: the backup could never run.** `supabase link` needs a Supabase access token that CI lacks.
+  - The dump now connects with `--db-url` through the session pooler (`SUPABASE_DB_URL`, built by `scripts/lib/db-url.mjs` from the pooler address the CLI recorded and the password).
+  - **Owner step:** setting that GitHub secret was blocked for me by the session's permission rules, so the owner sets it with one command (`HANDOFF.md`).
+  - Docker was not running locally, so the dump is first checked in CI.
+- **Major: a failed editor chunk** (offline, or an old tab after a deploy) took the whole app down.
+  - The editor sits in its own error boundary: it closes, with a notice.
+  - Every on-demand screen is fetched 3 s after start (`features/shell/screens.ts`), so the service worker has them for offline use.
+- **Minor fixes:**
+  - the shell cache keeps its newest 80 entries (old builds' files go)
+  - page loads fall back to the cached shell after 3 s on a bad connection
+  - backups use `gpg --symmetric` (authenticated: a tampered file is refused)
+  - Ctrl+K does nothing over another dialog (the editor's edits are safe)
+  - the palette highlight is always clamped to the list
+  - Escape that closes the palette over focus mode no longer leaves focus mode
 

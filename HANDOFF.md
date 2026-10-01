@@ -18,7 +18,8 @@
     - WP5, quick add, suggestions, search, undo, duplicate, priority and due date (#32)
   - **WP6, command palette, installable app with an offline cache, nightly backup and code splitting:** PR open from `feat/phase-3-wp6-pwa`.
     - New secret `BACKUP_PASSPHRASE`: it is in `.env.local`, the Vercel development env and the GitHub secrets.
-    - `SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD` are now GitHub secrets too (for the backup).
+    - The backup also needs the GitHub secret `SUPABASE_DB_URL` (owner step: `node scripts/lib/db-url.mjs | gh secret set SUPABASE_DB_URL`).
+    - The GitHub secrets `SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD`, set during WP6, are no longer used and can be deleted.
   - **Migrations `0003` to `0008` are applied.** `npm run db:migrations` shows local = remote.
   - **Next:**
     - the release PR `phase-3-parity` → `main` as `v0.3.0`
@@ -198,14 +199,14 @@ Run everything in **Git Bash**, one step at a time. Each step ends with a check;
 
 ### Restore a backup
 The nightly `Backup` workflow stores an encrypted dump (schema and data) for 14 days.
-1. `gh run list --workflow backup.yml` and pick a run, then `gh run download <run-id>` (it holds `backup.tgz.enc`).
-2. Decrypt (Git Bash; the passphrase comes from `.env.local` and is never printed):
+1. `gh run list --workflow backup.yml` and pick a run, then `gh run download <run-id>` (it holds `backup.tgz.gpg`).
+2. Decrypt (Git Bash; the passphrase comes from `.env.local` and is never printed; `gpg` refuses a tampered file):
    ```bash
-   BACKUP_PASSPHRASE="$(node scripts/lib/env-file.mjs get .env.local BACKUP_PASSPHRASE)" \
-     openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in backup.tgz.enc -pass env:BACKUP_PASSPHRASE | tar xz
+   node scripts/lib/env-file.mjs get .env.local BACKUP_PASSPHRASE |      gpg --batch --pinentry-mode loopback --passphrase-fd 0 --decrypt backup.tgz.gpg | tar xz
    ```
    That gives `schema.sql` and `data.sql`.
 3. Restore into a project with `psql` (schema first, then data). Never commit the files: they hold all your data.
+4. **One-time setup** on a new repo or after a password rotation: `node scripts/lib/db-url.mjs | gh secret set SUPABASE_DB_URL` (needs `npm run db:link` first, for the pooler address).
 
 ### Paused database (HTTP 540)
 The free Supabase project pauses after 7 days without activity. `npm run db:ping` then prints `PAUSED (540)`, and the app shows "The Supabase project is paused".
