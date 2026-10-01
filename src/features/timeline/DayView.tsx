@@ -1,6 +1,6 @@
 import { Fragment, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router'
-import { CalendarDays, Plus, Repeat } from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router'
+import { CalendarDays, History, Plus, Repeat } from 'lucide-react'
 import { addDays, formatDateLabel, formatTime, isISODate, type ISODate } from '@/core/dates'
 import { windowOf } from '@/core/schedule'
 import { layoutDay, nextStartTime, taskProgress, type Task } from '@/core/tasks'
@@ -8,7 +8,8 @@ import { nowItemIndex, timelineItems } from '@/core/timeline'
 import { TaskIcon } from '@/components/TaskIcon'
 import { Button } from '@/components/ui/button'
 import { useAppSettings } from '@/data/queries/settings'
-import { useDayTasks, useTaskActions } from '@/data/queries/tasks'
+import { useDayTasks, useOverdueTasks, useTaskActions } from '@/data/queries/tasks'
+import { ViewSwitch } from '@/features/calendar/ViewSwitch'
 import { useEditor } from '@/features/editor/editorContext'
 import { GapRow } from '@/features/timeline/GapRow'
 import { useTaskDrop } from '@/features/timeline/taskDrag'
@@ -43,6 +44,7 @@ export function DayView() {
   const selected: ISODate =
     params.date !== undefined && isNavigableDate(params.date) ? params.date : today
   const query = useDayTasks(selected)
+  const overdue = useOverdueTasks(today).data?.length ?? 0
   const actions = useTaskActions()
   const editor = useEditor()
 
@@ -96,7 +98,8 @@ export function DayView() {
             {formatDateLabel(selected, 'EEEE d')}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <ViewSwitch date={selected} today={today} active="day" />
           {selected === today ? null : (
             <Button variant="outline" size="sm" onClick={() => goTo(today)}>
               <CalendarDays data-icon="inline-start" /> Today
@@ -109,6 +112,19 @@ export function DayView() {
       </header>
 
       <WeekStrip selected={selected} today={today} weekStart={settings.weekStart} onSelect={goTo} />
+
+      {selected === today && overdue > 0 ? (
+        <Link
+          to="/replan"
+          className="flex items-center gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm hover:bg-amber-500/15"
+        >
+          <History className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span className="flex-1">
+            {overdue} unfinished {overdue === 1 ? 'task' : 'tasks'} from earlier days
+          </span>
+          <span className="font-medium">Replan</span>
+        </Link>
+      ) : null}
 
       <QueryState query={query}>
         {allDay.length > 0 ? (
