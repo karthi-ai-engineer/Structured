@@ -243,3 +243,35 @@
 - **Undo and suggestions** read only real task lists; search results hold series templates.
 - **Accepted:** "Dinner at 8" means 08:00. Only "at 1" to "at 7" mean the afternoon; write 8pm.
 
+## WP6: Command palette, installable app, offline cache, nightly backup, code splitting (2026-10-01)
+
+### What was done
+- **Command palette (S6):** Ctrl/⌘+K anywhere.
+  - Go to today, week, month, inbox, search, Replan or settings.
+  - New task, focus on the running task, switch the theme, or open a task by name.
+  - Arrow keys and Enter, with listbox semantics. `/` jumps to search.
+- **Installable app (S7):** a manifest, icons drawn by a small script (no image library), and a theme color.
+- **Offline read cache (S9):** `public/sw.js`, registered in production builds only.
+  - Assets are cache first; pages are network first, with the app shell offline.
+  - Supabase reads are network first, with the last response offline (at most 300 cached).
+  - It never caches writes or `/api/*`.
+  - An Install button is not needed: browsers offer installation themselves.
+- **Nightly backup (S11):** `backup.yml`, run by the scheduler and on demand.
+  - The pinned Supabase CLI dumps the schema and the data. AES-256 encryption with `BACKUP_PASSPHRASE` comes first, since artifacts of a public repo are downloadable. Retention is 14 days.
+  - No host, key or data is ever printed. It also keeps the free project awake.
+- **Code splitting:**
+  - The week, month, Replan, focus and search screens and the editor load on demand.
+  - The first download went from 753 kB (226 kB gzip) to about 660 kB in two chunks (about 200 kB gzip).
+- **Smoke check:** after every deploy, it also checks that `/manifest.webmanifest` and `/sw.js` are served.
+
+### Secrets
+- **New `BACKUP_PASSPHRASE`** (random, 43 characters), in `.env.local`, the Vercel development env (`env:sync-vercel --apply`, so other machines get it) and the GitHub secrets.
+- **`SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD`** were added to the GitHub secrets.
+- **A slip:** the first attempt used the wrong `env-file set` syntax, which stored an empty GitHub secret. It was caught by checking the value lengths (never the values) and set again; nothing was printed.
+
+### Commands run
+- `npm run verify`
+- `npm run test:e2e`: the new `palette.spec.ts`, and the whole suite
+- `npm run test:e2e:pwa`: a production build; the app installs and opens offline with the same tasks
+- **The backup workflow can only be dispatched from `main`.** It is checked after the release merge (see the verification report).
+

@@ -149,6 +149,11 @@ Enforced by ESLint (`eslint.config.js`, run by `npm run lint`) and, for `src/cor
   - `src/core/alerts.ts`: minutes before the start, with `-1` meaning at the end; `null` follows `settings.default_alerts`. `features/alerts/useAlertScheduler` fires them while the app is open: a desktop notification when allowed (`platform/notifications.ts`), otherwise an in-app notice.
   - `src/core/focus.ts` plans the intervals (`settings.focus_minutes` / `break_minutes`). `/focus/:id` is the timer, and it logs each segment to `focus_sessions`; an occurrence logs its series id.
   - The focus timer reads milliseconds through `nowMs()` in `dates.ts` (the only module that reads the clock).
+- **Installable app and palette (Phase 3):**
+  - `public/manifest.webmanifest`, icons drawn by `scripts/generate-icons.mjs`, and `public/sw.js` (plain JS; registered in production builds only, by `platform/pwa.ts`).
+  - `public/sw.js` serves `/assets/*` cache first, pages network first with the cached app shell offline, and Supabase REST reads network first with the last response offline. It never caches writes or `/api/*`. Bump `VERSION` in it to drop old caches.
+  - `features/palette/CommandPalette.tsx`: Ctrl/⌘+K anywhere; `/` jumps to search.
+  - Less-used screens and the editor load on demand (`lazy` in `App.tsx` and `EditorProvider`).
 - **Quick add, search, undo (Phase 3):**
   - `src/core/quickadd.ts` parses "Gym tomorrow 7am 1h !high ~2"; `features/editor/quickAddDraft.ts` applies the result to a draft. The editor previews it as chips and applies it on blur and on save; the inbox quick add uses it too.
   - `src/core/suggest.ts`: the latest task with the same title wins, otherwise a keyword map. A new task's icon and color follow its title until one is picked by hand.
@@ -271,6 +276,7 @@ Run these from the repo root, in Git Bash on Windows. `npm run verify` is the fu
 | `npm run test:watch` | Unit tests in watch mode |
 | `npm run test:coverage` | Unit tests plus the `src/core` coverage thresholds (95 % lines and statements, 100 % functions, 90 % branches) |
 | `npm run test:integration` | Opt-in tests against the real database. Needs `.env.local`, never runs in CI, and touches only `__test__` rows. |
+| `npm run test:e2e:pwa` | Opt-in: a production build served by `vite preview` on port 4173, then `tests/pwa/` checks that the app is installable and opens offline with the last data it loaded. Read-only. |
 | `npm run test:e2e` | Opt-in Playwright tests in the installed Microsoft Edge (no browser download) against the dev server on port 5173 and the real database. Never in CI. Test tasks start with `__test__`; `tests/e2e/cleanup.ts` soft-deletes any live leftovers before and after every run. Assert on loaded data (wait for `[aria-busy="true"]` to disappear) and wait for the write to be confirmed before reloading, since the UI updates optimistically. |
 | `npm run check` | The four repo checks below |
 | `npm run check:hygiene` | No BOM, valid UTF-8, no CR; lockfile native bindings for Windows, Linux and macOS; the Node and Vercel CLI pins; the `ci-verify` invariants |
@@ -284,7 +290,7 @@ Run these from the repo root, in Git Bash on Windows. `npm run verify` is the fu
 | `npm run db:migrations` | Lists local and remote migration versions |
 | `npm run db:types` | Regenerates `src/data/database.types.ts` (UTF-8, LF) |
 | `npm run db:ping` | One REST probe: `db: ok (200)`, or `PAUSED (540)` |
-| `npm run env:check` | Status of the 8 app keys in `.env.local` (`ok`, `missing`, `empty`, `placeholder`, `whitespace`); never values |
+| `npm run env:check` | Status of the 9 app keys in `.env.local` (`ok`, `missing`, `empty`, `placeholder`, `whitespace`); never values |
 | `npm run env:sync-vercel` | Read-only report: `.env.local` against the Vercel env matrix. `-- --apply` adds missing rows; `-- --apply --force` also overwrites rows that differ. |
 
 Other tools:
@@ -302,11 +308,12 @@ Values live only in `.env.local` (gitignored), in the Vercel project and in GitH
 | `VITE_SUPABASE_URL` | yes | Config | Config | Config | – |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | yes | Config | Config | Config | – |
 | `SUPABASE_SECRET_KEY` | yes | Secret | – | Config | – |
-| `SUPABASE_DB_PASSWORD` | yes | – | – | Config | – |
-| `SUPABASE_PROJECT_REF` | yes | – | – | Config | – |
+| `SUPABASE_DB_PASSWORD` | yes | – | – | Config | yes (backup) |
+| `SUPABASE_PROJECT_REF` | yes | – | – | Config | yes (backup) |
 | `VERCEL_PROJECT_NAME` | yes | – | – | Config | – |
 | `PROD_URL` | yes | – | – | Config | yes |
 | `MCP_SECRET` | yes | Secret | – | Config | – |
+| `BACKUP_PASSPHRASE` | yes | – | – | Config | yes |
 | `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | in `.vercel/project.json` | – | – | – | yes |
 | `VERCEL_TOKEN` | – | – | – | – | yes |
 
@@ -335,6 +342,11 @@ Rules:
 - **Every merge into `main` deploys production, and so does every merged Dependabot PR.** Merge only what should go live.
 - **Bot PRs.** The title and body of a bot-authored PR (Dependabot) are not scanned by `check:commits`, because they quote upstream release notes. Its commit messages and authors are always checked.
 - **The Vercel CLI is pinned** to exactly `vercel@61.1.0` in `.github/workflows/deploy.yml`, `scripts/ci/deploy-prod.sh` and `scripts/lib/vercel.mjs`. Bump all three in one commit (`check:hygiene` fails if they differ), and update the version in the docs that quote it.
+- **Nightly backup** (`.github/workflows/backup.yml`, 18:00 UTC, and on demand with `gh workflow run backup.yml`):
+  - the pinned Supabase CLI dumps the schema and the data
+  - the dump is encrypted with `BACKUP_PASSPHRASE` (the artifacts of a public repo are downloadable) and kept for 14 days
+  - it also keeps the free project from pausing
+  - restore: see `HANDOFF.md`, "Restore a backup"
 - **Deploys come only from GitHub Actions.** The Vercel Git integration is off, and `vercel.json` has `git.deploymentEnabled: false`. Redeploy with `gh workflow run deploy.yml --ref main`. A local deploy uses the same script (see `HANDOFF.md`).
 - **After merging a Dependabot npm PR, run `npm ci` on Windows**, then `npm run verify`.
 
