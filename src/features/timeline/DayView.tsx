@@ -2,12 +2,16 @@ import { Fragment, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import { CalendarDays, Plus, Repeat } from 'lucide-react'
 import { addDays, formatDateLabel, formatTime, isISODate, type ISODate } from '@/core/dates'
-import { layoutDay, nextStartTime, nowLineIndex, taskProgress } from '@/core/tasks'
+import { windowOf } from '@/core/schedule'
+import { layoutDay, nextStartTime, taskProgress, type Task } from '@/core/tasks'
+import { nowItemIndex, timelineItems } from '@/core/timeline'
 import { TaskIcon } from '@/components/TaskIcon'
 import { Button } from '@/components/ui/button'
 import { useAppSettings } from '@/data/queries/settings'
 import { useDayTasks, useTaskActions } from '@/data/queries/tasks'
 import { useEditor } from '@/features/editor/editorContext'
+import { GapRow } from '@/features/timeline/GapRow'
+import { useTaskDrop } from '@/features/timeline/taskDrag'
 import { CheckCircle, TaskRow } from '@/features/timeline/TaskRow'
 import { WeekStrip } from '@/features/timeline/WeekStrip'
 import { useClock } from '@/features/timeline/useClock'
@@ -45,11 +49,17 @@ export function DayView() {
   const goTo = (date: ISODate) => {
     if (isNavigableDate(date)) void navigate(date === today ? '/' : `/day/${date}`)
   }
-  const openNew = () =>
+  const defaultStart = selected === today ? nextStartTime(nowMinutes) : settings.dayStart
+  const openNew = () => editor.openCreate({ date: selected, startTime: defaultStart })
+  const openAt = (start: string, minutes: number) =>
     editor.openCreate({
       date: selected,
-      startTime: selected === today ? nextStartTime(nowMinutes) : settings.dayStart,
+      startTime: start,
+      durationMin: Math.min(settings.defaultDuration, minutes),
     })
+  const scheduleAt = (task: Task, start: string) =>
+    actions.update(task, { date: selected, startTime: start, isAllDay: false })
+  const emptyDrop = useTaskDrop((task) => scheduleAt(task, defaultStart))
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -67,7 +77,11 @@ export function DayView() {
   })
 
   const { allDay, timed } = layoutDay(query.data ?? [])
-  const lineAt = selected === today ? nowLineIndex(timed, nowMinutes) : -1
+  // Free time that has already passed today is not offered.
+  const notBefore = selected === today ? nowMinutes : selected < today ? 1440 : 0
+  const items = timelineItems(timed, windowOf(settings), notBefore)
+  const lastTask = timed.at(-1)
+  const lineAt = selected === today ? nowItemIndex(items, nowMinutes) : -1
   const isEmpty = query.data !== undefined && allDay.length === 0 && timed.length === 0
 
   return (
@@ -120,7 +134,13 @@ export function DayView() {
         ) : null}
 
         {isEmpty ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-center text-muted-foreground">
+          <div
+            {...emptyDrop.bind}
+            className={cn(
+              'flex flex-col items-center gap-3 rounded-xl py-16 text-center text-muted-foreground',
+              emptyDrop.over && 'bg-primary/10 ring-2 ring-primary/40',
+            )}
+          >
             <p>Nothing planned for this day.</p>
             <Button variant="outline" onClick={openNew}>
               <Plus data-icon="inline-start" /> Add a task
@@ -128,22 +148,34 @@ export function DayView() {
           </div>
         ) : (
           <ol aria-label="Timeline" className="flex flex-col">
-            {timed.map((task, i) => (
-              <Fragment key={task.id}>
+            {items.map((item, i) => (
+              <Fragment key={item.kind === 'task' ? item.task.id : `gap-${item.start}`}>
                 {i === lineAt ? (
                   <NowLine minutes={nowMinutes} format={settings.timeFormat} />
                 ) : null}
-                <TaskRow
-                  task={task}
-                  timeFormat={settings.timeFormat}
-                  progress={taskProgress(task, today, nowMinutes)}
-                  isLast={i === timed.length - 1}
-                  onOpen={editor.openEdit}
-                  onToggle={actions.toggleComplete}
-                />
+                {item.kind === 'task' ? (
+                  <TaskRow
+                    task={item.task}
+                    timeFormat={settings.timeFormat}
+                    progress={taskProgress(item.task, today, nowMinutes)}
+                    isLast={item.task === lastTask}
+                    overlaps={item.overlaps}
+                    onOpen={editor.openEdit}
+                    onToggle={actions.toggleComplete}
+                    onReschedule={actions.update}
+                  />
+                ) : (
+                  <GapRow
+                    start={item.start}
+                    minutes={item.minutes}
+                    timeFormat={settings.timeFormat}
+                    onAdd={openAt}
+                    onDropTask={scheduleAt}
+                  />
+                )}
               </Fragment>
             ))}
-            {lineAt === timed.length && timed.length > 0 ? (
+            {lineAt === items.length && items.length > 0 ? (
               <NowLine minutes={nowMinutes} format={settings.timeFormat} />
             ) : null}
           </ol>

@@ -87,3 +87,37 @@
 - **Stale scope buttons:** the editor now recomputes the offered scopes live, and ignores a choice that is no longer valid.
 - **Known and accepted:** moving a whole series from its first occurrence keeps completed occurrences on their old dates, as history.
 
+## WP2: Timeline interactions (2026-10-01)
+
+### What was done
+- **Free time (T8):** rows between tasks inside the day hours, from 15 minutes up.
+  - Past free time is hidden today and on past days.
+  - A tap opens the editor at that time, with the default duration capped to the gap.
+- **Overlaps (T9):** a warning icon on overlapping tasks. The editor shows non-blocking warnings (overlaps, outside the day hours, past midnight) while you plan.
+- **Drag (T10):** drag a task's pill to move it, and its bottom edge to resize it, in 5-minute steps. The time labels update live.
+  - Mouse: after 4 px.
+  - Touch: after a 350 ms long press; a quick swipe still scrolls.
+  - A drag on a recurring occurrence changes only that occurrence.
+- **Inbox to timeline (T11, desktop):** drag an inbox item onto free time (it starts there) or onto an empty day.
+
+### Commands run
+- `npm run verify`
+- `npm run test:e2e`:
+  - the new `timeline.spec.ts`: free time → add, overlap warnings and icons, drag to move, drag to resize, inbox drag
+  - a touch long-press drag in `mobile.spec.ts`
+  - the whole suite
+
+### Notes for testers
+- **Resize handle:** the small bar at the bottom of each pill.
+- **Phone:** press and hold a pill, then drag.
+- **Fixed during development:** the resize handle is small, so a fast mouse drag could leave it before the drag started. Mouse and pen pointers are now captured on press.
+
+### Code review, round 1 (PR #26): changes requested; 1 major and 5 minor findings, all fixed
+- **Major: a touch drag ended without a click, so the stale "swallow the next click" flag ate the next tap on that task.** Every press now clears the flag. A phone e2e taps after a drag; without the fix it fails, as confirmed.
+- **Minor fixes:**
+  - a drag that ends where it started changes nothing (a 0-minute task stays 0)
+  - a click on the resize strip opens the task
+  - a lost pointer capture (rows reordered mid-drag) ends the drag without saving
+  - finger movement in any direction cancels a long press
+  - inbox drags carry their own data type, so a stale drag never moves a task
+

@@ -14,6 +14,7 @@ import { useAppSettings } from '@/data/queries/settings'
 import { useInboxTasks, useTaskActions } from '@/data/queries/tasks'
 import { useEditor } from '@/features/editor/editorContext'
 import { QueryState } from '@/features/shell/QueryState'
+import { taskDrag } from '@/features/timeline/taskDrag'
 import { CheckCircle } from '@/features/timeline/TaskRow'
 
 /** Quick add plus the list of undated tasks. Used by the inbox page and the desktop panel. */
@@ -66,6 +67,10 @@ export function InboxList() {
             {items.map((task) => (
               <li
                 key={task.id}
+                // Desktop: drag onto free time (or an empty day) in the timeline to schedule it.
+                draggable
+                onDragStart={(e) => taskDrag.start(task, e.dataTransfer)}
+                onDragEnd={() => taskDrag.end()}
                 className="flex items-center gap-2 rounded-xl pl-2 hover:bg-muted/50"
               >
                 <span

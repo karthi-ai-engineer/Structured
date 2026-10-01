@@ -141,6 +141,12 @@ Enforced by ESLint (`eslint.config.js`, run by `npm run lint`) and, for `src/cor
 - **Routes:** `/` (today), `/day/YYYY-MM-DD`, `/inbox` and `/settings`. Vercel's SPA rewrite serves them all.
 - **Phone versus desktop:** under `lg`, bottom tabs, a floating add button and a bottom-sheet editor. From `lg`, a sidebar and an inbox panel next to the timeline.
 - **Safety net:** `platform/unload.ts` asks before leaving the page while a mutation is pending.
+- **Timeline interactions (Phase 3):**
+  - `src/core/timeline.ts` builds the rows: tasks, free-time gaps (15 minutes or more, inside the day hours, never in the past) and overlap flags. It also has the 5-minute drag snapping.
+  - `features/timeline/useVerticalDrag.ts`: mouse and pen drags start after 4 px; touch drags need a 350 ms long press, so swipes still scroll. The click that ends a drag is swallowed.
+  - The task pill moves the task; its bottom handle resizes it.
+  - Inbox items drag (HTML drag and drop, desktop) onto free time or an empty day (`taskDrag.ts`).
+  - The editor shows non-blocking warnings from `plannedTaskWarnings`, the same logic the MCP server uses.
 - **Recurring tasks (Phase 3):**
   - **Rules:** `src/core/recurrence.ts`, an RRULE subset stored in `repeat_rule`:
     - `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY` and `INTERVAL`
