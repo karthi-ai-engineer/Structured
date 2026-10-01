@@ -98,9 +98,18 @@ describe('alerts', () => {
       [0],
     )
     expect(alerts.map((a) => `${a.taskId} ${a.at}`)).toEqual(['gym 420', 'meet 585', 'meet 630'])
-    expect(alerts[1]?.key).toBe('meet|2026-10-01|15')
+    expect(alerts[1]?.key).toBe('meet|2026-10-01|15|585')
     expect(dueBetween(alerts, 420, 600).map((a) => a.taskId)).toEqual(['meet'])
     expect(dueBetween(alerts, 419, 420).map((a) => a.taskId)).toEqual(['gym'])
+  })
+
+  it('a moved task alerts again; a 0-minute task alerts once per minute', () => {
+    const [before] = alertsForDay([task('a', { startTime: '10:00' })], [0])
+    const [after] = alertsForDay([task('a', { startTime: '10:30' })], [0])
+    expect(before?.key).not.toBe(after?.key)
+    expect(
+      alertsForDay([task('ping', { durationMin: 0, alerts: [0, ALERT_AT_END] })], []),
+    ).toHaveLength(1)
   })
 
   it('words the notification', () => {

@@ -42,17 +42,21 @@ export interface DueAlert {
 }
 
 /** Every alert of a day's timed, unfinished tasks, in time order. Alerts that would fall on the
- *  day before (a task at 00:10 with a 30-minute alert) are dropped. */
+ *  day before (a task at 00:10 with a 30-minute alert) are dropped, and a task alerts at most once
+ *  per minute (a 0-minute task's start and end). The key includes the minute, so a task that is
+ *  moved alerts again at its new time. */
 export function alertsForDay(tasks: readonly Task[], defaults: readonly number[]): DueAlert[] {
   const out: DueAlert[] = []
   for (const task of tasks) {
     if (task.completedAt !== null || isAllDayLike(task) || !task.startTime || !task.date) continue
     const start = toMinutes(task.startTime)
+    const minutesUsed = new Set<number>()
     for (const minutes of task.alerts ?? defaults) {
       const at = minutes === ALERT_AT_END ? start + task.durationMin : start - minutes
-      if (at < 0 || at >= 1440) continue
+      if (at < 0 || at >= 1440 || minutesUsed.has(at)) continue
+      minutesUsed.add(at)
       out.push({
-        key: `${task.id}|${task.date}|${minutes}`,
+        key: `${task.id}|${task.date}|${minutes}|${at}`,
         taskId: task.id,
         title: task.title,
         at,

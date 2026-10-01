@@ -170,7 +170,9 @@ export function SettingsView() {
     className: 'h-9 w-24',
     defaultValue: settings[key],
     onBlur: (e: FocusEvent<HTMLInputElement>) => {
-      const value = Math.round(Number(e.currentTarget.value))
+      const text = e.currentTarget.value.trim()
+      // An emptied field is not 0: it goes back to the saved value.
+      const value = text === '' ? Number.NaN : Math.round(Number(text))
       if (value !== settings[key] && validateSettingsPatch({ [key]: value }).length === 0) {
         save({ [key]: value })
       } else {

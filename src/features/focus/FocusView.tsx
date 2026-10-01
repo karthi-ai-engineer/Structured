@@ -22,7 +22,8 @@ import { cn } from '@/lib/utils'
 
 const RING = 2 * Math.PI * 120
 
-/** A task from any cached list (focus opens from the timeline, so it is loaded). */
+/** A task from any cached list. The tick below re-renders, so a task that loads after a reload
+ *  (today's list is fetched in the background) is picked up. */
 function useCachedTask(id: string): Task | null {
   const qc = useQueryClient()
   for (const [, data] of qc.getQueriesData<Task[]>({ queryKey: taskKeys.all })) {
@@ -30,6 +31,14 @@ function useCachedTask(id: string): Task | null {
     if (found) return found
   }
   return null
+}
+
+function useTick(ms: number): void {
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const timer = setInterval(() => setTick((n) => n + 1), ms)
+    return () => clearInterval(timer)
+  }, [ms])
 }
 
 /** Minutes to focus: until the task ends when it is running now, else its duration. */
@@ -46,59 +55,76 @@ function focusMinutes(task: Task, today: string, nowMinutes: number, fallback: n
 /** Full-screen focus timer for one task (PLAN.md F1, F2). */
 export function FocusView() {
   const { id = '' } = useParams()
+  useTick(500)
   const task = useCachedTask(id)
+  if (!task) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-24 text-center text-muted-foreground">
+        <p>Loading the task… If it does not appear, open it from the timeline and start focus.</p>
+        <Link to="/" className={buttonVariants({ variant: 'outline' })}>
+          Back to today
+        </Link>
+      </div>
+    )
+  }
+  // Mounted once the task is known, so the interval plan starts from real values.
+  return <FocusTimer key={task.id} task={task} />
+}
+
+function FocusTimer({ task }: { task: Task }) {
   const settings = useAppSettings()
   const { today, nowMinutes } = useClock(settings.timezone)
   const navigate = useNavigate()
   const actions = useTaskActions()
+  const dialog = useRef<HTMLDivElement>(null)
+  useTick(250)
 
   // The plan is fixed when the timer starts.
   const [segments] = useState<Segment[]>(() =>
-    task
-      ? planIntervals(
-          focusMinutes(task, today, nowMinutes, settings.focusMinutes),
-          settings.focusMinutes,
-          settings.breakMinutes,
-        )
-      : [],
+    planIntervals(
+      focusMinutes(task, today, nowMinutes, settings.focusMinutes),
+      settings.focusMinutes,
+      settings.breakMinutes,
+    ),
   )
   const [clock, setClock] = useState(() => ({
     startedAt: nowMs(),
     pausedAt: null as number | null,
   }))
-  const [, setTick] = useState(0)
   const logged = useRef(0)
-  const segmentStart = useRef(nowIso())
 
-  useEffect(() => {
-    const timer = setInterval(() => setTick((n) => n + 1), 250)
-    return () => clearInterval(timer)
-  }, [])
-
-  const elapsed = (clock.pausedAt ?? nowMs()) - clock.startedAt
-  const position = positionAt(segments, elapsed)
+  const current = clock.pausedAt ?? nowMs()
+  const position = positionAt(segments, current - clock.startedAt)
   const segment = segments[position.index]
   const paused = clock.pausedAt !== null
 
-  // Log every segment that has ended (once), for the stats.
+  /** Logs segment `index` from its start up to `endMs` (for the stats). */
+  function log(index: number, endMs: number) {
+    const s = segments[index]
+    if (!s) return
+    const startMs = clock.startedAt + startOfSegment(segments, index)
+    if (endMs <= startMs) return
+    void focus()
+      .log({
+        taskId: task.id,
+        kind: s.kind,
+        startedAt: nowIso(new Date(startMs)),
+        endedAt: nowIso(new Date(endMs)),
+        plannedMin: s.minutes,
+      })
+      .catch(() => undefined)
+  }
+
+  // Every segment that has ended is logged once, with its own start and end times.
   useEffect(() => {
     while (logged.current < position.index) {
-      const done = segments[logged.current]
+      const index = logged.current
       logged.current += 1
-      if (!done) continue
-      const endedAt = nowIso()
-      void focus()
-        .log({
-          taskId: task?.id ?? null,
-          kind: done.kind,
-          startedAt: segmentStart.current,
-          endedAt,
-          plannedMin: done.minutes,
-        })
-        .catch(() => undefined)
-      segmentStart.current = endedAt
+      log(index, clock.startedAt + startOfSegment(segments, index + 1))
     }
-  }, [position.index, segments, task?.id])
+  })
+
+  useEffect(() => dialog.current?.focus(), [])
 
   function togglePause() {
     setClock((c) =>
@@ -109,19 +135,27 @@ export function FocusView() {
   }
 
   function skip() {
-    // Move the start back so the next segment begins now.
+    // Logs what was done of this segment, then moves the start so the next one begins now.
+    log(position.index, current)
+    logged.current = position.index + 1
     const target = startOfSegment(segments, position.index + 1)
     setClock((c) => ({ ...c, startedAt: (c.pausedAt ?? nowMs()) - target }))
   }
 
   function exit(markDone: boolean) {
-    if (markDone && task && task.completedAt === null) actions.toggleComplete(task)
+    if (!position.done) {
+      log(position.index, current)
+      logged.current = segments.length
+    }
+    if (markDone && task.completedAt === null) actions.toggleComplete(task)
     void navigate(-1)
   }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === ' ') {
+      // Space on a focused button presses that button; elsewhere it pauses.
+      const onControl = e.target instanceof Element && e.target.closest('button, a, input')
+      if (e.key === ' ' && !onControl) {
         e.preventDefault()
         togglePause()
       } else if (e.key === 'Escape') {
@@ -132,17 +166,6 @@ export function FocusView() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  if (!task) {
-    return (
-      <div className="flex flex-col items-center gap-3 py-24 text-center text-muted-foreground">
-        <p>This task is not loaded. Open it from the timeline, then start focus.</p>
-        <Link to="/" className={buttonVariants({ variant: 'outline' })}>
-          Back to today
-        </Link>
-      </div>
-    )
-  }
-
   const hex = colorHex(task.color)
   const isBreak = segment?.kind === 'break'
   const focusCount = segments.filter((s) => s.kind === 'focus').length
@@ -150,10 +173,12 @@ export function FocusView() {
 
   return (
     <div
+      ref={dialog}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label={`Focus: ${task.title}`}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-8 bg-background px-6"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-8 bg-background px-6 outline-none"
     >
       <button
         type="button"

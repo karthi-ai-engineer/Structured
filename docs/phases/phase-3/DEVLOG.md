@@ -183,3 +183,14 @@
 - **Alerts only fire while the app is open.** Background push needs a service worker and is planned with the PWA work in WP6.
 - **The e2e cleanup** also deletes focus sessions logged against `__test__` tasks.
 
+### Code review, round 1 (PR #30): changes requested; 1 major and 7 minor findings, all fixed
+- **Major: a moved task never alerted again,** because the alert key ignored the time. The key now includes the alert's minute.
+- **Minor fixes:**
+  - after sleep or a hidden tab, alerts catch up 5 minutes at most (no burst)
+  - a new day checks from midnight, so alerts at 00:00 to 00:01 that load late still fire
+  - a reload on `/focus/:id` waits for the task instead of showing a finished timer (pinned by e2e)
+  - every focus segment logs its real start and end, including the partial segment on Skip, Leave or Mark done
+  - an emptied number field in Settings goes back to its value instead of saving 0
+  - a 0-minute task alerts once per minute
+  - Space pauses only when no button has focus, and focus moves into the focus screen
+

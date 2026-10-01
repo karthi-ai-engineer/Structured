@@ -94,6 +94,11 @@ test('energy, an alert at the start, and a focus session with intervals', async 
   await expect(focus.getByRole('timer')).toHaveText(/^2\d:\d\d$/) // about 25 minutes left
   await expect(focus).toContainText('Interval 1 of 2')
 
+  // A reload restarts the timer once the task has loaded again (it never shows a finished one).
+  await page.reload()
+  await expect(focus.getByRole('timer')).toHaveText(/^2\d:\d\d$/)
+  await expect(focus).toContainText('Interval 1 of 2')
+
   // Pause stops the clock; resume continues it.
   await focus.getByRole('button', { name: 'Pause' }).click()
   const paused = await focus.getByRole('timer').textContent()
