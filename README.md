@@ -21,14 +21,14 @@ It is a single-user app that runs entirely on free tiers, built phase by phase f
 - settings with themes
 - live sync between devices
 
-Next is the Claude connector (Phase 2). [`HANDOFF.md`](HANDOFF.md) has the live status, and [`CHANGELOG.md`](CHANGELOG.md) lists every release.
+**Phase 2** connects Claude: ask it to plan your day, and the tasks appear live in the planner (see [Connect Claude](#connect-claude)). Next is Structured parity (Phase 3). [`HANDOFF.md`](HANDOFF.md) has the live status, and [`CHANGELOG.md`](CHANGELOG.md) lists every release.
 
 | Phase | Scope | Status |
 |---|---|---|
 | 0. Foundation | Scaffold, database schema, time-zone core, CI/CD, "DB connected" page | Done (`v0.0.1`) |
-| 1. Web MVP | Day timeline, task editor, inbox, week strip, realtime sync, themes, settings | Done; ships as `v0.1.0` |
-| 2. MCP server | "Claude plans my day": read and write tools, dry runs, undo by batch | Next |
-| 3. Structured parity | Recurring tasks, drag and drop, week and month views, replan, energy monitor, focus mode, alerts, quick add | Planned |
+| 1. Web MVP | Day timeline, task editor, inbox, week strip, realtime sync, themes, settings | Done (`v0.1.0`) |
+| 2. MCP server | "Claude plans my day": read and write tools, dry runs, undo by batch | Done; ships as `v0.2.0` |
+| 3. Structured parity | Recurring tasks, drag and drop, week and month views, replan, energy monitor, focus mode, alerts, quick add | Next |
 | 4. Android APK | Capacitor app, native notifications, APK built by GitHub Actions | Planned |
 | 5. Work tracking | Goals with progress and pace, focus logs, stats, daily and weekly reviews | Planned |
 | 6. Extras | Web Push, offline write queue, calendar-grid view | Planned |
@@ -62,6 +62,24 @@ Grouped as in [`PLAN.md`](PLAN.md) §3. Nothing below exists yet except the foun
 - Prompts such as `plan_day`, `replan_overdue`, `weekly_review` and `break_down_goal` (Phases 2 and 5)
 
 Deferred for now: calendar sync, in-app AI, home-screen widgets, login/SSO.
+
+## Connect Claude
+
+The planner includes a remote MCP server, so Claude can read your schedule and plan your day.
+
+1. Build the connector URL from `.env.local`: `PROD_URL` + `/api/mcp/` + `MCP_SECRET`. Keep it private: anyone with the URL can read and change your planner.
+2. Add it:
+   - **Claude** (web, desktop, mobile): Settings → Connectors → Add custom connector, paste the URL, no authentication.
+   - **Claude Code:** `claude mcp add --transport http structured <URL>`
+3. Ask, for example, "Plan my tomorrow" (or use the `plan_day` prompt).
+
+Claude shows the plan and asks before writing anything. Every change it makes returns a batch id, and `undo_batch` reverts it. Changes you made in the app since are kept unless you force the undo.
+
+| Tools | |
+|---|---|
+| Read | `get_context`, `get_schedule`, `list_inbox`, `find_free_slots`, `list_overdue`, `search_tasks` |
+| Write | `create_tasks` (with a dry run), `update_task`, `move_tasks`, `set_completion`, `delete_tasks`, `add_subtasks`, `undo_batch` |
+| Prompts | `plan_day`, `replan_overdue` |
 
 ## Tech stack
 
@@ -108,7 +126,7 @@ Then provide the environment:
 - **Anyone else:** copy `.env.example` to `.env.local` and fill it in from your own Supabase project. Apply the schema with the Supabase CLI (`npm run db:link`, then `npm run db:push`).
 
 ```bash
-npm run env:check   # the 7 keys, status only
+npm run env:check   # the 8 keys, status only
 npm run dev         # the page shows "Structured" and "DB connected"
 ```
 
