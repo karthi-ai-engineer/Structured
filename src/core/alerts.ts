@@ -51,7 +51,11 @@ export function alertsForDay(tasks: readonly Task[], defaults: readonly number[]
     if (task.completedAt !== null || isAllDayLike(task) || !task.startTime || !task.date) continue
     const start = toMinutes(task.startTime)
     const minutesUsed = new Set<number>()
-    for (const minutes of task.alerts ?? defaults) {
+    // "At end" last, so a 0-minute task with both says it starts now.
+    const list = [...(task.alerts ?? defaults)].sort((a, b) =>
+      a === ALERT_AT_END ? 1 : b === ALERT_AT_END ? -1 : a - b,
+    )
+    for (const minutes of list) {
       const at = minutes === ALERT_AT_END ? start + task.durationMin : start - minutes
       if (at < 0 || at >= 1440 || minutesUsed.has(at)) continue
       minutesUsed.add(at)

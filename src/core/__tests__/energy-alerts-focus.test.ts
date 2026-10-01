@@ -107,9 +107,8 @@ describe('alerts', () => {
     const [before] = alertsForDay([task('a', { startTime: '10:00' })], [0])
     const [after] = alertsForDay([task('a', { startTime: '10:30' })], [0])
     expect(before?.key).not.toBe(after?.key)
-    expect(
-      alertsForDay([task('ping', { durationMin: 0, alerts: [0, ALERT_AT_END] })], []),
-    ).toHaveLength(1)
+    const once = alertsForDay([task('ping', { durationMin: 0, alerts: [ALERT_AT_END, 0] })], [])
+    expect(once.map((a) => a.minutes)).toEqual([0])
   })
 
   it('words the notification', () => {

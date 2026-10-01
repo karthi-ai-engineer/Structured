@@ -194,3 +194,8 @@
   - a 0-minute task alerts once per minute
   - Space pauses only when no button has focus, and focus moves into the focus screen
 
+### Code review, round 2: approved; 2 of its 3 minors fixed before merge
+- **A long focus on another day's task:** the timer now watches that day's list, so the list stays cached and the task cannot vanish.
+- **A 0-minute task with alerts at both its start and end:** it now says "starts now" (the start wins the shared minute).
+- **Accepted:** after a pause, logged segment start times shift by the pause; the lengths stay right.
+

@@ -16,7 +16,7 @@ import { Button, buttonVariants } from '@/components/ui/button'
 import { taskKeys } from '@/data/queries/keys'
 import { focus } from '@/data/queries/repos'
 import { useAppSettings } from '@/data/queries/settings'
-import { useTaskActions } from '@/data/queries/tasks'
+import { useDayTasks, useTaskActions } from '@/data/queries/tasks'
 import { useClock } from '@/features/timeline/useClock'
 import { cn } from '@/lib/utils'
 
@@ -78,6 +78,9 @@ function FocusTimer({ task }: { task: Task }) {
   const actions = useTaskActions()
   const dialog = useRef<HTMLDivElement>(null)
   useTick(250)
+  // Watching the task's day keeps that list cached for as long as the timer runs (an unwatched
+  // list is dropped a few minutes after its view closes, and the task would vanish).
+  useDayTasks(task.date ?? today)
 
   // The plan is fixed when the timer starts.
   const [segments] = useState<Segment[]>(() =>
