@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react'
-import { Check, Inbox, Plus, Repeat, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, Inbox, Plus, Repeat, Trash2, X } from 'lucide-react'
 import { formatDuration, nowMinutesIn, todayIn } from '@/core/dates'
+import { plannedTaskWarnings } from '@/core/schedule'
+import { editorWarnings } from '@/core/timeline'
 import {
   DEFAULT_TASK_COLOR,
   DURATION_PRESETS,
@@ -22,7 +24,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAppSettings } from '@/data/queries/settings'
-import { useTaskActions } from '@/data/queries/tasks'
+import { useDayTasks, useTaskActions } from '@/data/queries/tasks'
 import type { EditorRequest } from '@/features/editor/editorContext'
 import { RepeatField } from '@/features/editor/RepeatField'
 import {
@@ -88,6 +90,19 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
   const repeatSpec = draft.date === null ? null : repeatSpecOf(repeat, start)
   const repeating = repeatSpec !== null
   const problems = [...validateDraft(draft), ...repeatProblems(repeat, start)]
+  // Overlaps, day hours and midnight: shown while planning, never blocking the save.
+  const sameDay = useDayTasks(start).data ?? []
+  const warnings =
+    draft.date === null || problems.length > 0
+      ? []
+      : editorWarnings(
+          plannedTaskWarnings(draft, {
+            sameDay: sameDay.filter((t) => t.id !== editing?.id),
+            window: settings,
+            today,
+            nowMinutes: nowMinutesIn(settings.timezone),
+          }),
+        )
   const isEdit = request.mode === 'edit'
   const scheduled = draft.date !== null
   const accent = colorHex(draft.color)
@@ -411,6 +426,19 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
               onChange={(e) => set({ notes: e.target.value })}
             />
           </div>
+
+          {warnings.length > 0 ? (
+            <ul
+              aria-label="Warnings"
+              className="flex flex-col gap-1 text-sm text-amber-700 dark:text-amber-400"
+            >
+              {warnings.map((w) => (
+                <li key={w} className="flex items-center gap-2">
+                  <AlertTriangle className="size-4 shrink-0" /> {w}
+                </li>
+              ))}
+            </ul>
+          ) : null}
 
           {problems.length > 0 && draft.title.trim() !== '' ? (
             <ul className="text-sm text-destructive">
