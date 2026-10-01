@@ -33,6 +33,8 @@ function task(overrides: Partial<Task> = {}): Task {
     startTime: '09:00',
     durationMin: 30,
     isAllDay: false,
+    energy: null,
+    alerts: null,
     completedAt: null,
     inboxOrder: 0,
     createdAt: '2026-09-30T00:00:00.000Z',
@@ -52,6 +54,8 @@ const draft: TaskDraft = {
   startTime: '09:00',
   durationMin: 90,
   isAllDay: false,
+  energy: null,
+  alerts: null,
 }
 
 describe('colors', () => {
@@ -266,6 +270,8 @@ describe('belongsTo: ranges and the overdue list', () => {
     expect(belongsTo(task({ date: null }), overdue)).toBe(false)
     const occurrence = task({
       date: '2026-09-30',
+      energy: null,
+      alerts: null,
       recurrence: {
         seriesId: 's',
         occurrenceDate: '2026-09-30',

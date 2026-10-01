@@ -26,6 +26,8 @@ function timed(id: string, startTime: string, durationMin: number): Task {
     inboxOrder: 0,
     createdAt: '2026-10-01T00:00:00Z',
     updatedAt: '2026-10-01T00:00:00Z',
+    energy: null,
+    alerts: null,
     recurrence: null,
   }
 }

@@ -18,6 +18,11 @@ describe('settings', () => {
       dayEnd: '22:00',
       defaultDuration: 30,
       theme: 'system',
+      energyEnabled: true,
+      energyLimit: 30,
+      focusMinutes: 25,
+      breakMinutes: 5,
+      defaultAlerts: [0],
     })
   })
 

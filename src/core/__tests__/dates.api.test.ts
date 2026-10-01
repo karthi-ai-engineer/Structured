@@ -27,6 +27,7 @@ describe('dates.ts API', () => {
         'normalizeTimeZone',
         'nowIso',
         'nowMinutesIn',
+        'nowMs',
         'parseISODate',
         'startOfDayInstant',
         'startOfWeek',

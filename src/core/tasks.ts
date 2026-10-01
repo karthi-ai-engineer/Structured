@@ -14,6 +14,7 @@ import {
   toMinutes,
   type ISODate,
 } from './dates.ts'
+import type { EnergyLevel } from './energy.ts'
 import type { RepeatRule } from './recurrence.ts'
 
 export const TASK_COLORS = [
@@ -77,6 +78,10 @@ export interface Task {
   createdAt: string
   updatedAt: string
   recurrence: Recurrence | null
+  /** -1 relaxing, 0 neutral, 1..3 draining; null: not set (neutral). */
+  energy: EnergyLevel | null
+  /** Minutes before the start (0 = at the start, -1 = at the end); null: the settings' defaults. */
+  alerts: number[] | null
 }
 
 /** The fields a user edits. */
@@ -91,6 +96,8 @@ export type TaskDraft = Pick<
   | 'startTime'
   | 'durationMin'
   | 'isAllDay'
+  | 'energy'
+  | 'alerts'
 >
 
 export type TaskPatch = Partial<TaskDraft> & { completedAt?: string | null }
