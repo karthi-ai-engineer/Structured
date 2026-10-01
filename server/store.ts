@@ -1,12 +1,18 @@
 // The MCP server's data access: tasks, settings and undo batches in Supabase, through the secret
-// key (server only). Plain one-off tasks only, like the app in Phase 1: recurring series arrive in
-// Phase 3. Every error surfaces as a short code, never a server message.
+// key (server only). Every error surfaces as a short code, never a server message.
+//
+// Recurring tasks (src/core/series.ts): schedule reads (`listRange`, `listDates`) include their
+// occurrences, so plans, free slots and overlap warnings account for them. Everything else reads
+// one-off tasks only: occurrences cannot be changed through the connector yet.
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json, TablesUpdate } from '../src/data/database.types.ts'
 import { isValidTimeZone, type ISODate } from '../src/core/dates.ts'
 import { taskFromRow, toStartTime } from '../src/core/rows.ts'
-import type { Subtask, Task, TaskColor } from '../src/core/tasks.ts'
+import { searchPattern } from '../src/core/search.ts'
+import { expandSeriesRows, missingSeriesIds } from '../src/core/series.ts'
+import type { EnergyLevel } from '../src/core/energy.ts'
+import type { Priority, Subtask, Task, TaskColor } from '../src/core/tasks.ts'
 
 export type AdminDb = SupabaseClient<Database>
 
@@ -23,6 +29,8 @@ export interface StoreSettings {
   dayStart: string
   dayEnd: string
   defaultDuration: number
+  energyEnabled: boolean
+  energyLimit: number
 }
 
 export interface NewTask {
@@ -36,6 +44,11 @@ export interface NewTask {
   startTime: string | null
   durationMin: number
   isAllDay: boolean
+  energy: EnergyLevel | null
+  /** Alerts are set in the app only; Claude's tasks use the user's defaults. */
+  alerts: null
+  priority: Priority | null
+  dueDate: ISODate | null
 }
 
 /** Column changes, in domain terms. `deletedAt` soft-deletes (a timestamp) or restores (null). */
@@ -49,6 +62,9 @@ export interface TaskChanges {
   startTime?: string | null
   durationMin?: number
   isAllDay?: boolean
+  energy?: EnergyLevel | null
+  priority?: Priority | null
+  dueDate?: ISODate | null
   completedAt?: string | null
   deletedAt?: string | null
 }
@@ -83,12 +99,13 @@ export interface SearchOptions {
 
 export interface TaskStore {
   getSettings(): Promise<StoreSettings>
+  /** Tasks dated from..to, including occurrences of recurring tasks. */
   listRange(from: ISODate, to: ISODate): Promise<Task[]>
   listInbox(limit: number): Promise<Task[]>
   /** Open tasks dated from `since` up to the day before `before`. */
   listOpenBefore(before: ISODate, since: ISODate): Promise<Task[]>
   search(query: string, options: SearchOptions): Promise<Task[]>
-  /** Live tasks on exactly these dates (for warnings). */
+  /** Live tasks on exactly these dates, including occurrences (for warnings). */
   listDates(dates: readonly ISODate[]): Promise<Task[]>
   /** Tasks by id; soft-deleted ones only when asked (undo needs them). */
   getMany(ids: readonly string[], includeDeleted?: boolean): Promise<Task[]>
@@ -134,27 +151,47 @@ function toUpdate(changes: TaskChanges, batchId: string | null): TablesUpdate<'t
   if (changes.startTime !== undefined) u.start_time = changes.startTime
   if (changes.durationMin !== undefined) u.duration_min = changes.durationMin
   if (changes.isAllDay !== undefined) u.is_all_day = changes.isAllDay
+  if (changes.energy !== undefined) u.energy = changes.energy
+  if (changes.priority !== undefined) u.priority = changes.priority
+  if (changes.dueDate !== undefined) u.due_date = changes.dueDate
   if (changes.completedAt !== undefined) u.completed_at = changes.completedAt
   if (changes.deletedAt !== undefined) u.deleted_at = changes.deletedAt
   if (batchId !== null) u.batch_id = batchId
   return u
 }
 
-/** The `ilike` pattern for a search, or null when nothing searchable is left. PostgREST `or`
- *  syntax characters are removed, `*` (PostgREST's wildcard) too, and LIKE wildcards are
- *  escaped, so the query always matches literally. */
-export function searchPattern(query: string): string | null {
-  const clean = query
-    .replace(/[,()"*]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-  if (clean === '') return null
-  return `%${clean.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
-}
+export { searchPattern } from '../src/core/search.ts'
 
 export function createSupabaseStore(db: AdminDb): TaskStore {
   const plain = () => db.from('tasks').select('*').is('repeat_rule', null).is('series_id', null)
   const live = () => plain().is('deleted_at', null)
+  const liveAny = () => db.from('tasks').select('*').is('deleted_at', null)
+
+  /** Occurrences dated from..to: the series active then, plus overrides from or moved into it. */
+  async function occurrences(from: ISODate, to: ISODate): Promise<Task[]> {
+    const [series, overrides] = await Promise.all([
+      liveAny()
+        .not('repeat_rule', 'is', null)
+        .is('series_id', null)
+        .lte('date', to)
+        .or(`repeat_until.is.null,repeat_until.gte.${from}`),
+      liveAny()
+        .not('series_id', 'is', null)
+        .or(
+          `and(occurrence_date.gte.${from},occurrence_date.lte.${to}),and(date.gte.${from},date.lte.${to})`,
+        ),
+    ])
+    if (series.error) fail(series.error, series.status)
+    if (overrides.error) fail(overrides.error, overrides.status)
+    const rows = [...series.data, ...overrides.data]
+    const missing = missingSeriesIds(rows)
+    if (missing.length > 0) {
+      const extra = await liveAny().not('repeat_rule', 'is', null).in('id', missing)
+      if (extra.error) fail(extra.error, extra.status)
+      rows.push(...extra.data)
+    }
+    return expandSeriesRows(rows, from, to)
+  }
 
   return {
     async getSettings() {
@@ -171,13 +208,18 @@ export function createSupabaseStore(db: AdminDb): TaskStore {
         dayStart: toStartTime(data?.day_start ?? null) ?? '07:00',
         dayEnd: toStartTime(data?.day_end ?? null) ?? '22:00',
         defaultDuration: data?.default_duration ?? 30,
+        energyEnabled: data?.energy_enabled ?? true,
+        energyLimit: data?.energy_limit ?? 30,
       }
     },
 
     async listRange(from, to) {
-      const { data, error, status } = await live().gte('date', from).lte('date', to)
+      const [{ data, error, status }, repeating] = await Promise.all([
+        live().gte('date', from).lte('date', to),
+        occurrences(from, to),
+      ])
       if (error) fail(error, status)
-      return data.map(taskFromRow)
+      return [...data.map(taskFromRow), ...repeating]
     },
 
     async listInbox(limit) {
@@ -218,9 +260,16 @@ export function createSupabaseStore(db: AdminDb): TaskStore {
 
     async listDates(dates) {
       if (dates.length === 0) return []
-      const { data, error, status } = await live().in('date', [...new Set(dates)])
+      const wanted = [...new Set(dates)].sort()
+      const [{ data, error, status }, repeating] = await Promise.all([
+        live().in('date', wanted),
+        occurrences(wanted[0] ?? '', wanted[wanted.length - 1] ?? ''),
+      ])
       if (error) fail(error, status)
-      return data.map(taskFromRow)
+      return [
+        ...data.map(taskFromRow),
+        ...repeating.filter((t) => t.date !== null && wanted.includes(t.date)),
+      ]
     },
 
     async getMany(ids, includeDeleted = false) {
@@ -243,6 +292,9 @@ export function createSupabaseStore(db: AdminDb): TaskStore {
         start_time: t.startTime,
         duration_min: t.durationMin,
         is_all_day: t.isAllDay,
+        energy: t.energy,
+        priority: t.priority,
+        due_date: t.dueDate,
         source: 'mcp',
         batch_id: batchId,
       }))

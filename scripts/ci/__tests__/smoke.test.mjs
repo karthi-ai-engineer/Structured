@@ -47,6 +47,13 @@ function fakeSite(overrides = {}) {
         return response(200, { body: html(SHA), headers: GOOD_HEADERS })
       case '/robots.txt':
         return response(200, { body: 'User-agent: *', headers: { 'content-type': 'text/plain' } })
+      case '/manifest.webmanifest':
+        return response(200, {
+          body: '{}',
+          headers: { 'content-type': 'application/manifest+json' },
+        })
+      case '/sw.js':
+        return response(200, { body: '', headers: { 'content-type': 'text/javascript' } })
       case 'db':
         return response(200, {
           body: '[{"id":1}]',
@@ -169,6 +176,8 @@ describe('runSmoke', () => {
       'ok GET /api (404)',
       'ok GET /api/not-a-function (404)',
       'ok GET /robots.txt (200)',
+      'ok GET /manifest.webmanifest (200)',
+      'ok GET /sw.js (200)',
       'ok GET db /rest/v1/settings (200)',
       'smoke: ok',
     ])

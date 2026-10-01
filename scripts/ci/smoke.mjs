@@ -11,7 +11,8 @@
 //   3. GET /day/2026-01-01 is 200 text/html (SPA rewrite)
 //   4. GET /assets/does-not-exist.js is 404 (assets are never rewritten)
 //   5. GET /api and GET /api/not-a-function are 404 (the API namespace is never rewritten)
-//   6. GET /robots.txt is 200
+//   6. GET /robots.txt is 200, and the installable app's /manifest.webmanifest and /sw.js are
+//      200 (static files, never the SPA page)
 //   7. The live database answers the publishable key (GET /rest/v1/settings is 200)
 //   8. With --expect-protected: the generated deployment URL needs a Vercel login
 //      (Standard Protection; the URL is read from the file and never printed)
@@ -232,6 +233,8 @@ export async function runSmoke(deps = {}) {
   await expectStatus('/api', 404)
   await expectStatus('/api/not-a-function', 404)
   await expectStatus('/robots.txt', 200)
+  await expectStatus('/manifest.webmanifest', 200)
+  await expectStatus('/sw.js', 200)
 
   // 7: the live database answers the publishable key.
   const db = await get(sbOrigin, '/rest/v1/settings?select=id&limit=1', { apikey: sbKey })

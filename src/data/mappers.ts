@@ -2,6 +2,7 @@
 // Postgres `time` columns come back as 'HH:mm:ss'; the app uses 'HH:mm'.
 import type { Tables, TablesInsert, TablesUpdate } from '@/data/database.types'
 import { isValidTimeZone } from '@/core/dates'
+import { toAlerts } from '@/core/alerts'
 import { taskFromRow, toStartTime } from '@/core/rows'
 import { detectTimeZone } from '@/platform/timezone'
 import type { Task, TaskDraft, TaskPatch } from '@/core/tasks'
@@ -29,9 +30,10 @@ function subtasksJson(subtasks: TaskDraft['subtasks']): Json {
   return subtasks.map((s) => ({ id: s.id, title: s.title, done: s.done }))
 }
 
-export function draftToInsert(id: string, draft: TaskDraft): TablesInsert<'tasks'> {
+/** The insert row for a draft; without an `id` the database generates one. */
+export function draftToInsert(id: string | undefined, draft: TaskDraft): TablesInsert<'tasks'> {
   return {
-    id,
+    ...(id === undefined ? {} : { id }),
     title: draft.title,
     notes: draft.notes,
     icon: draft.icon,
@@ -41,6 +43,10 @@ export function draftToInsert(id: string, draft: TaskDraft): TablesInsert<'tasks
     start_time: draft.startTime,
     duration_min: draft.durationMin,
     is_all_day: draft.isAllDay,
+    energy: draft.energy,
+    alerts: draft.alerts,
+    priority: draft.priority,
+    due_date: draft.dueDate,
     source: 'app',
   }
 }
@@ -56,6 +62,10 @@ export function patchToUpdate(patch: TaskPatch): TablesUpdate<'tasks'> {
   if (patch.startTime !== undefined) update.start_time = patch.startTime
   if (patch.durationMin !== undefined) update.duration_min = patch.durationMin
   if (patch.isAllDay !== undefined) update.is_all_day = patch.isAllDay
+  if (patch.energy !== undefined) update.energy = patch.energy
+  if (patch.alerts !== undefined) update.alerts = patch.alerts
+  if (patch.priority !== undefined) update.priority = patch.priority
+  if (patch.dueDate !== undefined) update.due_date = patch.dueDate
   if (patch.completedAt !== undefined) update.completed_at = patch.completedAt
   return update
 }
@@ -69,6 +79,11 @@ export function rowToSettings(row: SettingsRow): Settings {
     dayEnd: toStartTime(row.day_end) ?? '22:00',
     defaultDuration: row.default_duration,
     theme: toTheme(row.theme),
+    energyEnabled: row.energy_enabled,
+    energyLimit: row.energy_limit,
+    focusMinutes: row.focus_minutes,
+    breakMinutes: row.break_minutes,
+    defaultAlerts: toAlerts(row.default_alerts) ?? [0],
     updatedAt: row.updated_at,
   }
 }
@@ -82,5 +97,10 @@ export function settingsPatchToUpdate(patch: SettingsPatch): TablesUpdate<'setti
   if (patch.dayEnd !== undefined) update.day_end = patch.dayEnd
   if (patch.defaultDuration !== undefined) update.default_duration = patch.defaultDuration
   if (patch.theme !== undefined) update.theme = patch.theme
+  if (patch.energyEnabled !== undefined) update.energy_enabled = patch.energyEnabled
+  if (patch.energyLimit !== undefined) update.energy_limit = patch.energyLimit
+  if (patch.focusMinutes !== undefined) update.focus_minutes = patch.focusMinutes
+  if (patch.breakMinutes !== undefined) update.break_minutes = patch.breakMinutes
+  if (patch.defaultAlerts !== undefined) update.default_alerts = patch.defaultAlerts
   return update
 }

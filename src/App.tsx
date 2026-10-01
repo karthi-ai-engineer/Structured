@@ -7,11 +7,23 @@ import { createQueryClient } from '@/data/queries/client'
 import { settingsKey } from '@/data/queries/keys'
 import { isDbConfigured } from '@/data/queries/repos'
 import { useRealtimeSync } from '@/data/queries/realtime'
+import { useSeedDefaults } from '@/data/queries/seed'
+
+import { useAlertScheduler } from '@/features/alerts/useAlertScheduler'
 import { EditorProvider } from '@/features/editor/EditorProvider'
+
 import { InboxView } from '@/features/inbox/InboxView'
 import { SettingsView } from '@/features/settings/SettingsView'
 import { ThemeSync } from '@/features/settings/ThemeSync'
 import { AppShell } from '@/features/shell/AppShell'
+import {
+  FocusView,
+  MonthView,
+  preloadScreens,
+  ReplanView,
+  SearchView,
+  WeekView,
+} from '@/features/shell/screens'
 import { DayView } from '@/features/timeline/DayView'
 import { isOnline } from '@/platform/network'
 import { detectTimeZone } from '@/platform/timezone'
@@ -23,7 +35,10 @@ function Background() {
   const qc = useQueryClient()
   const saving = useIsMutating() > 0
   useRealtimeSync()
+  useSeedDefaults()
+  useAlertScheduler()
   useEffect(() => guardUnload(saving), [saving])
+  useEffect(() => preloadScreens(), [])
   useEffect(() => {
     if (!isDbConfigured) return
     void startDbCheck({ timezone: detectTimeZone(), online: isOnline() }).then(() =>
@@ -41,6 +56,13 @@ export function AppRoutes() {
         <Route element={<AppShell />}>
           <Route index element={<DayView />} />
           <Route path="day/:date" element={<DayView />} />
+          <Route path="week" element={<WeekView />} />
+          <Route path="week/:date" element={<WeekView />} />
+          <Route path="month" element={<MonthView />} />
+          <Route path="month/:month" element={<MonthView />} />
+          <Route path="replan" element={<ReplanView />} />
+          <Route path="focus/:id" element={<FocusView />} />
+          <Route path="search" element={<SearchView />} />
           <Route path="inbox" element={<InboxView />} />
           <Route path="settings" element={<SettingsView />} />
           <Route path="*" element={<Navigate to="/" replace />} />

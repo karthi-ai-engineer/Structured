@@ -38,6 +38,10 @@ function draft(overrides: Partial<TaskDraft> = {}): TaskDraft {
     startTime: '09:30',
     durationMin: 45,
     isAllDay: false,
+    energy: null,
+    alerts: null,
+    priority: null,
+    dueDate: null,
     ...overrides,
   }
 }
@@ -65,20 +69,19 @@ describe('task repository (real project)', () => {
     const id = randomUUID()
     created.push(id)
 
-    const task = await repo.create(id, draft())
+    const read = async () => (await repo.listDay(DAY)).find((t) => t.id === id)
+
+    await repo.create(id, draft())
+    const task = await read()
     expect(task).toMatchObject({ id, startTime: '09:30', durationMin: 45, color: 'blue' })
-    expect(task.subtasks).toEqual([{ id: 's1', title: 'step', done: false }])
+    expect(task?.subtasks).toEqual([{ id: 's1', title: 'step', done: false }])
 
-    expect((await repo.listDay(DAY)).map((t) => t.id)).toContain(id)
-
-    const done = await repo.update(id, {
-      completedAt: '2099-01-15T10:00:00.000Z',
-      startTime: '11:00',
-    })
-    expect(done.completedAt).not.toBeNull()
-    expect(done.startTime).toBe('11:00')
+    await repo.update(id, { completedAt: '2099-01-15T10:00:00.000Z', startTime: '11:00' })
+    const done = await read()
+    expect(done?.completedAt).not.toBeNull()
+    expect(done?.startTime).toBe('11:00')
     // The database trigger stamps updated_at; the client never sets it.
-    expect(done.updatedAt >= task.updatedAt).toBe(true)
+    expect((done?.updatedAt ?? '') >= (task?.updatedAt ?? '~')).toBe(true)
 
     await repo.update(id, { date: null, startTime: null, completedAt: null })
     expect((await repo.listDay(DAY)).map((t) => t.id)).not.toContain(id)
@@ -88,6 +91,32 @@ describe('task repository (real project)', () => {
     expect((await repo.listInbox()).map((t) => t.id)).not.toContain(id)
     const row = await admin.from('tasks').select('deleted_at').eq('id', id).single()
     expect(row.data?.deleted_at).not.toBeNull()
+  })
+
+  it('searches one-off tasks and the next occurrence of a series; restores a delete', async () => {
+    const key = randomUUID().slice(0, 8)
+    const id = randomUUID()
+    const seriesId = randomUUID()
+    created.push(id, seriesId)
+    await repo.create(id, draft({ title: `${PREFIX} find ${key} once`, notes: 'plain' }))
+    await repo.create(
+      seriesId,
+      draft({ title: `${PREFIX} find ${key} daily`, date: '2099-01-10', subtasks: [] }),
+      { rule: { freq: 'daily', interval: 1, weekdays: [] }, until: null },
+    )
+    const found = await repo.search(key, '2099-01-20')
+    expect(found.map((t) => t.title).sort()).toEqual([
+      `${PREFIX} find ${key} daily`,
+      `${PREFIX} find ${key} once`,
+    ])
+    // The series shows as its next occurrence, from the given day on.
+    expect(found.find((t) => t.recurrence)?.date).toBe('2099-01-20')
+    expect(await repo.search('*', DAY)).toEqual([])
+
+    await repo.remove(id)
+    expect((await repo.search(key, DAY)).map((t) => t.id)).not.toContain(id)
+    await repo.restore(id)
+    expect((await repo.search(key, DAY)).map((t) => t.id)).toContain(id)
   })
 
   it('delivers inserts and updates to another client in realtime', async () => {

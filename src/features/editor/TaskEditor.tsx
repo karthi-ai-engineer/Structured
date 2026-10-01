@@ -1,6 +1,20 @@
 import { useState, type FormEvent } from 'react'
-import { Check, Inbox, Plus, Trash2, X } from 'lucide-react'
+import { useNavigate } from 'react-router'
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  Flag,
+  Inbox,
+  Plus,
+  Repeat,
+  Timer,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { formatDuration, nowMinutesIn, todayIn } from '@/core/dates'
+import { plannedTaskWarnings } from '@/core/schedule'
+import { editorWarnings } from '@/core/timeline'
 import {
   DEFAULT_TASK_COLOR,
   DURATION_PRESETS,
@@ -8,11 +22,13 @@ import {
   colorHex,
   firstEmoji,
   nextStartTime,
+  PRIORITIES,
   normalizeTitle,
   validateDraft,
   type Subtask,
   type TaskDraft,
 } from '@/core/tasks'
+import { changesOf, planDelete, planEdit, scopesFor, type EditScope } from '@/core/seriesEdits'
 import { DEFAULT_ICON, TASK_ICONS, TaskIcon } from '@/components/TaskIcon'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -21,15 +37,54 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAppSettings } from '@/data/queries/settings'
-import { useTaskActions } from '@/data/queries/tasks'
+import { useCachedTasks, useDayTasks, useTaskActions } from '@/data/queries/tasks'
+import { parseQuickAdd } from '@/core/quickadd'
+import { suggestStyle } from '@/core/suggest'
+import { quickAddLabels, withQuickAdd } from '@/features/editor/quickAddDraft'
+import { useEditor } from '@/features/editor/editorContext'
 import type { EditorRequest } from '@/features/editor/editorContext'
+import { AlertsField, EnergyField } from '@/features/editor/EnergyAlertsFields'
+import { RepeatField } from '@/features/editor/RepeatField'
+import {
+  initialRepeat,
+  repeatProblems,
+  repeatSpecOf,
+  type RepeatState,
+} from '@/features/editor/repeatState'
 import { cn } from '@/lib/utils'
 
 function initialDraft(request: EditorRequest, defaultDuration: number): TaskDraft {
   if (request.mode === 'edit') {
-    const { title, notes, icon, color, subtasks, date, startTime, durationMin, isAllDay } =
-      request.task
-    return { title, notes, icon, color, subtasks, date, startTime, durationMin, isAllDay }
+    const {
+      title,
+      notes,
+      icon,
+      color,
+      subtasks,
+      date,
+      startTime,
+      durationMin,
+      isAllDay,
+      energy,
+      alerts,
+      priority,
+      dueDate,
+    } = request.task
+    return {
+      title,
+      notes,
+      icon,
+      color,
+      subtasks,
+      date,
+      startTime,
+      durationMin,
+      isAllDay,
+      energy,
+      alerts,
+      priority,
+      dueDate,
+    }
   }
   return {
     title: '',
@@ -41,13 +96,26 @@ function initialDraft(request: EditorRequest, defaultDuration: number): TaskDraf
     startTime: null,
     durationMin: defaultDuration,
     isAllDay: false,
+    energy: null,
+    alerts: null,
+    priority: null,
+    dueDate: null,
     ...request.defaults,
   }
+}
+
+const SCOPE_LABELS: Record<EditScope, string> = {
+  this: 'This task only',
+  future: 'This and future tasks',
+  all: 'All tasks',
 }
 
 export function TaskEditor({ request, onClose }: { request: EditorRequest; onClose: () => void }) {
   const settings = useAppSettings()
   const actions = useTaskActions()
+  const navigate = useNavigate()
+  const editor = useEditor()
+  const history = useCachedTasks()
   const [draft, setDraft] = useState<TaskDraft>(() =>
     initialDraft(request, settings.defaultDuration),
   )
@@ -59,29 +127,139 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
   // The date the task had (or was opened for), restored when "Scheduled" is switched back on.
   const originalDate = request.mode === 'edit' ? request.task.date : (request.defaults.date ?? null)
   const set = (patch: Partial<TaskDraft>) => setDraft((d) => ({ ...d, ...patch }))
+  const today = todayIn(settings.timezone)
+  const editing = request.mode === 'edit' ? request.task : null
+  // New tasks: quick-add syntax in the title (T15), and an icon and color that follow the title
+  // (T16) until one is picked by hand.
+  const prefilled = request.mode === 'create' && request.defaults.title !== undefined
+  const quick = editing || prefilled ? null : parseQuickAdd(draft.title, today)
+  const [stylePicked, setStylePicked] = useState(
+    editing !== null || (request.mode === 'create' && request.defaults.icon !== undefined),
+  )
+  const pick = (patch: Partial<TaskDraft>) => {
+    setStylePicked(true)
+    set(patch)
+  }
+  function effectiveDraft(d: TaskDraft): TaskDraft {
+    if (!quick) return d
+    const parsed = withQuickAdd(d, quick, today)
+    if (stylePicked) return parsed
+    const suggestion = suggestStyle(parsed.title, history)
+    return {
+      ...parsed,
+      icon: suggestion.icon ?? parsed.icon,
+      color: suggestion.color ?? parsed.color,
+    }
+  }
+  /** Moves what quick add recognised from the title into the fields. */
+  function applyQuickAdd() {
+    if (quick && quick.found.length > 0) setDraft((d) => withQuickAdd(d, quick, today))
+  }
+  const occurrence = editing?.recurrence ? editing : null
+  const [repeat, setRepeat] = useState<RepeatState>(() =>
+    initialRepeat(editing, draft.date ?? today),
+  )
+  // Saving or deleting an occurrence first asks which occurrences the change is for.
+  const [asking, setAsking] = useState<{ action: 'save' | 'delete'; scopes: EditScope[] } | null>(
+    null,
+  )
 
-  const problems = validateDraft(draft)
+  const shown = effectiveDraft(draft)
+  const start = shown.date ?? today
+  const repeatSpec = shown.date === null ? null : repeatSpecOf(repeat, start)
+  const repeating = repeatSpec !== null
+  const problems = [...validateDraft(shown), ...repeatProblems(repeat, start)]
+  // Overlaps, day hours and midnight: shown while planning, never blocking the save.
+  const sameDay = useDayTasks(start).data ?? []
+  const warnings =
+    shown.date === null || problems.length > 0
+      ? []
+      : editorWarnings(
+          plannedTaskWarnings(shown, {
+            sameDay: sameDay.filter((t) => t.id !== editing?.id),
+            window: settings,
+            today,
+            nowMinutes: nowMinutesIn(settings.timezone),
+          }),
+        )
   const isEdit = request.mode === 'edit'
   const scheduled = draft.date !== null
-  const accent = colorHex(draft.color)
+  const accent = colorHex(shown.color)
+
+  function cleanDraft(): TaskDraft {
+    const d = effectiveDraft(draft)
+    return {
+      ...d,
+      title: normalizeTitle(d.title),
+      notes: d.notes?.trim() ? d.notes.trim() : null,
+      startTime: d.date === null || d.isAllDay ? null : d.startTime,
+      isAllDay: d.date !== null && d.isAllDay,
+    }
+  }
+
+  /** A copy of this task as saved (T22): a new task with its values, to place and add. Unsaved
+   *  edits stay with this task (they are not copied). */
+  function duplicate() {
+    if (!editing) return
+    const { title, notes, icon, color, subtasks, date, startTime, durationMin, isAllDay } = editing
+    editor.openCreate({
+      title,
+      notes,
+      icon,
+      color,
+      subtasks: subtasks.map((s) => ({ ...s, id: crypto.randomUUID(), done: false })),
+      date,
+      startTime,
+      durationMin,
+      isAllDay,
+      energy: editing.energy,
+      alerts: editing.alerts,
+      priority: editing.priority,
+      dueDate: editing.dueDate,
+    })
+  }
 
   function save(event?: FormEvent) {
     event?.preventDefault()
     if (problems.length > 0) return
-    const clean: TaskDraft = {
-      ...draft,
-      title: normalizeTitle(draft.title),
-      notes: draft.notes?.trim() ? draft.notes.trim() : null,
-      startTime: draft.date === null || draft.isAllDay ? null : draft.startTime,
-      isAllDay: draft.date !== null && draft.isAllDay,
+    const clean = cleanDraft()
+    if (occurrence) {
+      const changes = changesOf(occurrence, clean, repeatSpec)
+      const unchanged =
+        JSON.stringify(clean) === JSON.stringify(initialDraft(request, settings.defaultDuration)) &&
+        !changes.rule &&
+        !changes.until
+      if (unchanged) onClose()
+      else setAsking({ action: 'save', scopes: [] })
+      return
     }
     // A completed task moved to the inbox is reopened: the inbox lists only open tasks, so it
     // would otherwise disappear from every screen.
-    const reopen =
-      request.mode === 'edit' && clean.date === null && request.task.completedAt !== null
-    if (request.mode === 'edit') {
-      actions.update(request.task, reopen ? { ...clean, completedAt: null } : clean)
-    } else actions.create(crypto.randomUUID(), clean)
+    const reopen = editing !== null && clean.date === null && editing.completedAt !== null
+    if (editing) {
+      actions.update(editing, reopen ? { ...clean, completedAt: null } : clean, repeatSpec)
+    } else actions.create(crypto.randomUUID(), clean, repeatSpec)
+    onClose()
+  }
+
+  // The fields stay editable while the choice is shown, so the offered scopes follow them.
+  const shownScopes =
+    asking?.action === 'save' && occurrence
+      ? scopesFor(occurrence, cleanDraft(), repeatSpec)
+      : (asking?.scopes ?? [])
+
+  function choose(scope: EditScope) {
+    if (!occurrence || !asking) return
+    try {
+      actions.applySeries(
+        asking.action === 'delete'
+          ? planDelete(occurrence, scope)
+          : planEdit(occurrence, cleanDraft(), repeatSpec, scope, crypto.randomUUID()),
+      )
+    } catch {
+      // The form changed after the choice was shown; the buttons now show what is possible.
+      return
+    }
     onClose()
   }
 
@@ -118,7 +296,7 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
               className="flex size-11 shrink-0 items-center justify-center rounded-full text-white"
               style={{ backgroundColor: accent }}
             >
-              <TaskIcon icon={draft.icon} />
+              <TaskIcon icon={shown.icon} />
             </button>
             <Input
               autoFocus
@@ -127,9 +305,22 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
               value={draft.title}
               maxLength={200}
               onChange={(e) => set({ title: e.target.value })}
+              onBlur={applyQuickAdd}
               className="h-11 text-base"
             />
           </div>
+          {quick && quick.found.length > 0 ? (
+            <ul aria-label="Recognised" className="-mt-3 flex flex-wrap gap-1.5 pl-14">
+              {quickAddLabels(quick, today).map((label) => (
+                <li
+                  key={label}
+                  className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+                >
+                  {label}
+                </li>
+              ))}
+            </ul>
+          ) : null}
 
           {showIcons ? (
             <div className="flex flex-col gap-2">
@@ -139,14 +330,14 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                     key={name}
                     type="button"
                     aria-label={`Icon ${name}`}
-                    aria-pressed={(draft.icon ?? DEFAULT_ICON) === name}
+                    aria-pressed={(shown.icon ?? DEFAULT_ICON) === name}
                     onClick={() => {
-                      set({ icon: name })
+                      pick({ icon: name })
                       setShowIcons(false)
                     }}
                     className={cn(
                       'flex aspect-square items-center justify-center rounded-md hover:bg-muted',
-                      (draft.icon ?? DEFAULT_ICON) === name && 'bg-muted ring-2 ring-ring',
+                      (shown.icon ?? DEFAULT_ICON) === name && 'bg-muted ring-2 ring-ring',
                     )}
                   >
                     <TaskIcon icon={name} className="size-4" />
@@ -159,7 +350,7 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                 defaultValue={draft.icon !== null && !TASK_ICONS[draft.icon] ? draft.icon : ''}
                 onChange={(e) => {
                   const emoji = firstEmoji(e.target.value)
-                  if (emoji) set({ icon: emoji })
+                  if (emoji) pick({ icon: emoji })
                 }}
               />
             </div>
@@ -172,12 +363,12 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                 key={c.name}
                 type="button"
                 aria-label={`Color ${c.name}`}
-                aria-pressed={draft.color === c.name}
-                onClick={() => set({ color: c.name })}
+                aria-pressed={shown.color === c.name}
+                onClick={() => pick({ color: c.name })}
                 className="flex size-8 items-center justify-center rounded-full"
                 style={{ backgroundColor: c.hex }}
               >
-                {draft.color === c.name ? <Check className="size-4 text-white" /> : null}
+                {shown.color === c.name ? <Check className="size-4 text-white" /> : null}
               </button>
             ))}
           </fieldset>
@@ -188,6 +379,7 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
               <Switch
                 id="task-scheduled"
                 checked={scheduled}
+                disabled={repeating}
                 onCheckedChange={(on) =>
                   set(
                     on
@@ -206,6 +398,12 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                 <Inbox className="size-4" /> Saved to the inbox, to schedule later.
               </p>
             )}
+            {repeating ? (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Repeat className="size-3" /> A repeating task stays scheduled. Set Repeat to Never
+                to move it to the inbox.
+              </p>
+            ) : null}
             {scheduled ? (
               <>
                 <div className="grid grid-cols-2 gap-3">
@@ -241,6 +439,12 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                     onCheckedChange={(on) => set({ isAllDay: on })}
                   />
                 </div>
+                <RepeatField
+                  state={repeat}
+                  start={start}
+                  weekStart={settings.weekStart}
+                  onChange={setRepeat}
+                />
               </>
             ) : null}
           </div>
@@ -283,6 +487,48 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
               </div>
             </fieldset>
           )}
+
+          {settings.energyEnabled ? (
+            <EnergyField value={shown.energy} onChange={(energy) => set({ energy })} />
+          ) : null}
+
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-2 flex items-center gap-2 text-sm font-medium">
+              <Flag className="size-4" /> Priority and due date
+            </legend>
+            <div className="flex flex-wrap items-center gap-2">
+              {PRIORITIES.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  aria-pressed={shown.priority === p.value}
+                  aria-label={`Priority: ${p.label}`}
+                  onClick={() => set({ priority: shown.priority === p.value ? null : p.value })}
+                  className={cn(
+                    'min-h-9 rounded-full border px-3 text-sm',
+                    shown.priority === p.value ? 'border-foreground bg-muted' : 'hover:bg-muted',
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+              <Input
+                type="date"
+                aria-label="Due date"
+                value={draft.dueDate ?? ''}
+                onChange={(e) => set({ dueDate: e.target.value || null })}
+                className="h-9 w-40"
+              />
+            </div>
+          </fieldset>
+
+          {scheduled && !draft.isAllDay ? (
+            <AlertsField
+              value={draft.alerts}
+              defaults={settings.defaultAlerts}
+              onChange={(alerts) => set({ alerts })}
+            />
+          ) : null}
 
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-2 text-sm font-medium">Subtasks</legend>
@@ -349,6 +595,19 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
             />
           </div>
 
+          {warnings.length > 0 ? (
+            <ul
+              aria-label="Warnings"
+              className="flex flex-col gap-1 text-sm text-amber-700 dark:text-amber-400"
+            >
+              {warnings.map((w) => (
+                <li key={w} className="flex items-center gap-2">
+                  <AlertTriangle className="size-4 shrink-0" /> {w}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
           {problems.length > 0 && draft.title.trim() !== '' ? (
             <ul className="text-sm text-destructive">
               {problems.map((p) => (
@@ -357,24 +616,88 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
             </ul>
           ) : null}
 
-          <div className="flex items-center gap-2">
-            {request.mode === 'edit' ? (
-              <Button
-                type="button"
-                variant="ghost"
-                className="text-destructive"
-                onClick={() => {
-                  actions.remove(request.task)
-                  onClose()
-                }}
-              >
-                <Trash2 data-icon="inline-start" /> Delete
+          {asking ? (
+            <div
+              role="group"
+              aria-label={
+                asking.action === 'save' ? 'Save the repeating task' : 'Delete the repeating task'
+              }
+              className="flex flex-col gap-2 rounded-lg border p-3"
+            >
+              <p className="text-sm font-medium">
+                {asking.action === 'save' ? 'Save the change for' : 'Delete'}
+              </p>
+              {asking.action === 'save' && shownScopes.length === 0 ? (
+                <p className="text-sm text-destructive">
+                  Save a new day and a new end date one at a time: first one, then the other.
+                </p>
+              ) : null}
+              {asking.action === 'save' && shownScopes.length === 1 && shownScopes[0] === 'this' ? (
+                <p className="text-xs text-muted-foreground">
+                  In a weekly series a new day applies to this task only. To move every future task,
+                  change Repeat to the new weekday.
+                </p>
+              ) : null}
+              {shownScopes.map((scope) => (
+                <Button
+                  key={scope}
+                  type="button"
+                  variant={asking.action === 'delete' ? 'destructive' : 'outline'}
+                  className="min-h-11 justify-start"
+                  onClick={() => choose(scope)}
+                >
+                  {SCOPE_LABELS[scope]}
+                </Button>
+              ))}
+              <Button type="button" variant="ghost" onClick={() => setAsking(null)}>
+                Cancel
               </Button>
-            ) : null}
-            <Button type="submit" className="ml-auto min-h-11 px-6" disabled={problems.length > 0}>
-              {isEdit ? 'Save' : 'Add task'}
-            </Button>
-          </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              {editing ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="text-destructive"
+                  onClick={() => {
+                    if (occurrence) {
+                      setAsking({ action: 'delete', scopes: ['this', 'future', 'all'] })
+                      return
+                    }
+                    actions.remove(editing)
+                    onClose()
+                  }}
+                >
+                  <Trash2 data-icon="inline-start" /> Delete
+                </Button>
+              ) : null}
+              {editing ? (
+                <Button type="button" variant="ghost" onClick={duplicate}>
+                  <Copy data-icon="inline-start" /> Duplicate
+                </Button>
+              ) : null}
+              {editing && editing.date !== null && !editing.isAllDay && !editing.completedAt ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    onClose()
+                    void navigate(`/focus/${encodeURIComponent(editing.id)}`)
+                  }}
+                >
+                  <Timer data-icon="inline-start" /> Focus
+                </Button>
+              ) : null}
+              <Button
+                type="submit"
+                className="ml-auto min-h-11 px-6"
+                disabled={problems.length > 0}
+              >
+                {isEdit ? 'Save' : 'Add task'}
+              </Button>
+            </div>
+          )}
         </form>
       </DialogContent>
     </Dialog>

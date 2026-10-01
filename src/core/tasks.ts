@@ -2,8 +2,8 @@
  * Task domain model and pure timeline logic (PLAN.md sections 3.1, 8 and 9.2).
  *
  * A task with `date === null` lives in the inbox. A dated task is either timed (`startTime` set,
- * not all-day) or sits in the all-day row (`isAllDay`, or no start time). Recurring series and
- * their overrides arrive in Phase 3; Phase 1 only reads plain one-off rows.
+ * not all-day) or sits in the all-day row (`isAllDay`, or no start time). An occurrence of a
+ * recurring series carries its `recurrence` (see series.ts); every other task has null.
  */
 
 import {
@@ -14,6 +14,8 @@ import {
   toMinutes,
   type ISODate,
 } from './dates.ts'
+import type { EnergyLevel } from './energy.ts'
+import type { RepeatRule } from './recurrence.ts'
 
 export const TASK_COLORS = [
   { name: 'coral', hex: '#FF6B6B' },
@@ -44,7 +46,20 @@ export interface Subtask {
   done: boolean
 }
 
+/** Where an occurrence of a recurring series comes from. */
+export interface Recurrence {
+  seriesId: string
+  /** The date the rule produced; it stays the same when the occurrence is moved. */
+  occurrenceDate: ISODate
+  rule: RepeatRule
+  /** The series' first date. */
+  start: ISODate
+  /** The series' last possible date (inclusive), or null for no end. */
+  until: ISODate | null
+}
+
 export interface Task {
+  /** A UUID, or `<seriesId>:<occurrenceDate>` for an occurrence of a recurring series. */
   id: string
   title: string
   notes: string | null
@@ -62,6 +77,27 @@ export interface Task {
   inboxOrder: number
   createdAt: string
   updatedAt: string
+  recurrence: Recurrence | null
+  /** -1 relaxing, 0 neutral, 1..3 draining; null: not set (neutral). */
+  energy: EnergyLevel | null
+  /** Minutes before the start (0 = at the start, -1 = at the end); null: the settings' defaults. */
+  alerts: number[] | null
+  /** 1 high, 2 medium, 3 low; null: none. */
+  priority: Priority | null
+  /** A deadline, separate from the day the task is planned on. */
+  dueDate: ISODate | null
+}
+
+export type Priority = 1 | 2 | 3
+
+export const PRIORITIES: readonly { value: Priority; label: string }[] = [
+  { value: 1, label: 'High' },
+  { value: 2, label: 'Medium' },
+  { value: 3, label: 'Low' },
+]
+
+export function toPriority(value: unknown): Priority | null {
+  return value === 1 || value === 2 || value === 3 ? value : null
 }
 
 /** The fields a user edits. */
@@ -76,6 +112,10 @@ export type TaskDraft = Pick<
   | 'startTime'
   | 'durationMin'
   | 'isAllDay'
+  | 'energy'
+  | 'alerts'
+  | 'priority'
+  | 'dueDate'
 >
 
 export type TaskPatch = Partial<TaskDraft> & { completedAt?: string | null }
@@ -135,6 +175,7 @@ export function validateDraft(draft: TaskDraft): string[] {
   }
   if (draft.date !== null && !isISODate(draft.date)) problems.push('Date is invalid')
   if (draft.startTime !== null && !isTime(draft.startTime)) problems.push('Start time is invalid')
+  if (draft.dueDate !== null && !isISODate(draft.dueDate)) problems.push('Due date is invalid')
   if (draft.date !== null && !draft.isAllDay && draft.startTime === null) {
     problems.push('Pick a start time or turn on All day')
   }
@@ -232,11 +273,32 @@ export function applyPatch(task: Task, patch: TaskPatch): Task {
 }
 
 /** Whether a task belongs in the given list (for optimistic cache updates). */
+/** A cached task list: one day, a date range (week and month views), the inbox, or the
+ *  unfinished one-off tasks dated `since` up to the day before `before` (Replan). */
+export type TaskList =
+  | { kind: 'day'; date: ISODate }
+  | { kind: 'range'; from: ISODate; to: ISODate }
+  | { kind: 'inbox' }
+  | { kind: 'overdue'; since: ISODate; before: ISODate }
+
 export function belongsTo(
-  task: Pick<Task, 'date' | 'completedAt'>,
-  list: { kind: 'day'; date: ISODate } | { kind: 'inbox' },
+  task: Pick<Task, 'date' | 'completedAt' | 'recurrence'>,
+  list: TaskList,
 ): boolean {
-  return list.kind === 'day'
-    ? task.date === list.date
-    : task.date === null && task.completedAt === null
+  switch (list.kind) {
+    case 'day':
+      return task.date === list.date
+    case 'range':
+      return task.date !== null && task.date >= list.from && task.date <= list.to
+    case 'inbox':
+      return task.date === null && task.completedAt === null
+    case 'overdue':
+      return (
+        task.date !== null &&
+        task.date >= list.since &&
+        task.date < list.before &&
+        task.completedAt === null &&
+        task.recurrence === null
+      )
+  }
 }

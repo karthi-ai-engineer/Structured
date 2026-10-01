@@ -2,7 +2,10 @@
 // summary line followed by compact JSON).
 
 import type { CallToolResult } from '@modelcontextprotocol/server'
+import { describeRule } from '../../src/core/recurrence.ts'
 import { isAllDayLike, taskEnd, type Task } from '../../src/core/tasks.ts'
+
+const PRIORITY_NAMES = { 1: 'high', 2: 'medium', 3: 'low' } as const
 
 export function ok(summary: string, data: unknown): CallToolResult {
   return { content: [{ type: 'text', text: `${summary}\n${JSON.stringify(data)}` }] }
@@ -40,6 +43,13 @@ export function view(task: Task, warnings?: readonly string[]): Record<string, u
   if (task.completedAt) v.done = true
   if (task.subtasks.length > 0) v.subtasks = task.subtasks
   if (task.notes) v.notes = task.notes
+  if (task.energy !== null) v.energy = task.energy
+  if (task.priority !== null) v.priority = PRIORITY_NAMES[task.priority]
+  if (task.dueDate !== null) v.due_date = task.dueDate
+  if (task.recurrence) {
+    v.repeats = describeRule(task.recurrence.rule, task.recurrence.start)
+    v.read_only = true
+  }
   if (warnings && warnings.length > 0) v.warnings = warnings
   return v
 }

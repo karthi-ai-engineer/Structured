@@ -138,10 +138,59 @@ Enforced by ESLint (`eslint.config.js`, run by `npm run lint`) and, for `src/cor
   - Every task list is cached under `['tasks', …]`. `writeTaskToCache` moves a task across all cached lists (day ↔ inbox, delete).
   - Mutations roll back on failure with a notice, and always refetch on settle.
 - **Features** (`src/features/`): `shell` (layout, `QueryState`, `Fab`), `timeline` (day view, week strip, task rows, `useClock`), `editor` (one dialog for the whole app, opened with `useEditor()`), `inbox`, `settings` (with `ThemeSync`).
-- **Routes:** `/` (today), `/day/YYYY-MM-DD`, `/inbox` and `/settings`. Vercel's SPA rewrite serves them all.
+- **Routes:**
+  - `/` (today) and `/day/YYYY-MM-DD`
+  - `/week` and `/week/YYYY-MM-DD`
+  - `/month` and `/month/YYYY-MM`
+  - `/replan`, `/inbox` and `/settings`
+  - Vercel's SPA rewrite serves them all.
+- **Energy, focus and alerts (Phase 3):**
+  - `src/core/energy.ts`: points are level × started half hours; green below 80 % of the limit, orange up to it, red above it. Shared with MCP `get_schedule` and the create warnings.
+  - `src/core/alerts.ts`: minutes before the start, with `-1` meaning at the end; `null` follows `settings.default_alerts`. `features/alerts/useAlertScheduler` fires them while the app is open: a desktop notification when allowed (`platform/notifications.ts`), otherwise an in-app notice.
+  - `src/core/focus.ts` plans the intervals (`settings.focus_minutes` / `break_minutes`). `/focus/:id` is the timer, and it logs each segment to `focus_sessions`; an occurrence logs its series id.
+  - The focus timer reads milliseconds through `nowMs()` in `dates.ts` (the only module that reads the clock).
+- **Installable app and palette (Phase 3):**
+  - `public/manifest.webmanifest`, icons drawn by `scripts/generate-icons.mjs`, and `public/sw.js` (plain JS; registered in production builds only, by `platform/pwa.ts`).
+  - `public/sw.js` serves `/assets/*` cache first, pages network first with the cached app shell offline, and Supabase REST reads network first with the last response offline. It never caches writes or `/api/*`. Bump `VERSION` in it to drop old caches.
+  - `features/palette/CommandPalette.tsx`: Ctrl/⌘+K anywhere; `/` jumps to search.
+  - Less-used screens and the editor load on demand (`lazy` in `App.tsx` and `EditorProvider`).
+- **Quick add, search, undo (Phase 3):**
+  - `src/core/quickadd.ts` parses "Gym tomorrow 7am 1h !high ~2"; `features/editor/quickAddDraft.ts` applies the result to a draft. The editor previews it as chips and applies it on blur and on save; the inbox quick add uses it too.
+  - `src/core/suggest.ts`: the latest task with the same title wins, otherwise a keyword map. A new task's icon and color follow its title until one is picked by hand.
+  - `src/core/search.ts` (`searchPattern`) is shared with the MCP server. `TasksRepo.search` returns one-off tasks plus each matching series' next occurrence.
+  - Undo: `notify(message, { label, run })`. `useTaskActions` offers it for delete (`restore`), completion, and moves passed `{ undo }` (drag, Replan, scheduling).
+- **Calendar (Phase 3):**
+  - `features/calendar` holds the week, month and Replan views, and the Day / Week / Month switch.
+  - Their lists are cached as `['tasks', 'range', from, to]` and `['tasks', 'overdue', today]` (`listOfKey`, `belongsTo`), so every optimistic write reaches them.
+  - `src/core/calendar.ts` holds the month grid, the tasks of each day, `fitIntoDay` (Replan's "Fit all into today") and `OVERDUE_DAYS`, which the MCP tools share.
 - **Phone versus desktop:** under `lg`, bottom tabs, a floating add button and a bottom-sheet editor. From `lg`, a sidebar and an inbox panel next to the timeline.
 - **Safety net:** `platform/unload.ts` asks before leaving the page while a mutation is pending.
-- **Deferred to Phase 3:** recurring tasks and the default "Rise and Shine" / "Wind Down" anchors (master plan T18). Phase 1 reads only plain one-off rows (`repeat_rule` and `series_id` null).
+- **Timeline interactions (Phase 3):**
+  - `src/core/timeline.ts` builds the rows: tasks, free-time gaps (15 minutes or more, inside the day hours, never in the past) and overlap flags. It also has the 5-minute drag snapping.
+  - `features/timeline/useVerticalDrag.ts`: mouse and pen drags start after 4 px; touch drags need a 350 ms long press, so swipes still scroll. The click that ends a drag is swallowed.
+  - The task pill moves the task; its bottom handle resizes it.
+  - Inbox items drag (HTML drag and drop, desktop) onto free time or an empty day (`taskDrag.ts`).
+  - The editor shows non-blocking warnings from `plannedTaskWarnings`, the same logic the MCP server uses.
+- **Recurring tasks (Phase 3):**
+  - **Rules:** `src/core/recurrence.ts`, an RRULE subset stored in `repeat_rule`:
+    - `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY` and `INTERVAL`
+    - weekly `BYDAY`
+    - monthly and yearly `BYMONTHDAY`, set only when a series is continued from a clamped day (Feb 28 of a series on the 31st)
+    - monthly and yearly use the last day of shorter months
+  - **Storage:** a series row has `repeat_rule`, and its `date` is the first occurrence. An override row (`series_id` + `occurrence_date`) is a full copy of one occurrence's own values (moved, edited, completed, or `is_cancelled`).
+  - **Occurrences** are never stored. `src/core/series.ts` expands them per range, with the id `<seriesId>:<occurrenceDate>`, which stays the same when the occurrence moves.
+  - **Edit and delete scopes** are planned in `src/core/seriesEdits.ts` (pure) and run by `TasksRepo.applySeriesWrite`:
+    - *this* upserts the override (`onConflict: series_id,occurrence_date`)
+    - *future* calls the `split_series` database function (atomic). Completed occurrences, and the edited occurrence's own override (`p_keep`), move to the new series with its values.
+    - *all* calls `update_series` (atomic) with only the fields the user changed, plus the end date
+  - **Moving one occurrence** to another day:
+    - daily, monthly and yearly series offer *this* or *this and future* (the new series starts on the picked day)
+    - weekly series offer *this* only; moving them is a rule change ("every week on Tuesday")
+    - a new day plus a new end date must be saved one at a time
+    - `planEdit` refuses any scope that `scopesFor` does not offer
+  - **Rule changes** are offered only as *this and future*, starting on the picked date, so history never changes retroactively. From the first occurrence, *this and future* rewrites the whole series.
+  - **Defaults:** "Rise and Shine" / "Wind Down" are created once by the `seed_default_tasks` function, guarded by `settings.seeded_at` (`src/data/queries/seed.ts`).
+  - **MCP:** `listRange` and `listDates` include occurrences (`repeats` and `read_only` in the task view). Writes refuse occurrence ids; "overdue" and search cover one-off tasks only.
 
 ## MCP server (Phase 2)
 Claude reads and writes the planner through a remote MCP server at `https://<app>/api/mcp/<MCP_SECRET>`. The official `@modelcontextprotocol/server` v2 `createMcpHandler` serves it statelessly: the 2026-07-28 protocol natively, plus the 2025 Streamable HTTP fallback.
@@ -227,6 +276,7 @@ Run these from the repo root, in Git Bash on Windows. `npm run verify` is the fu
 | `npm run test:watch` | Unit tests in watch mode |
 | `npm run test:coverage` | Unit tests plus the `src/core` coverage thresholds (95 % lines and statements, 100 % functions, 90 % branches) |
 | `npm run test:integration` | Opt-in tests against the real database. Needs `.env.local`, never runs in CI, and touches only `__test__` rows. |
+| `npm run test:e2e:pwa` | Opt-in: a production build served by `vite preview` on port 4173, then `tests/pwa/` checks that the app is installable and opens offline with the last data it loaded. Read-only. |
 | `npm run test:e2e` | Opt-in Playwright tests in the installed Microsoft Edge (no browser download) against the dev server on port 5173 and the real database. Never in CI. Test tasks start with `__test__`; `tests/e2e/cleanup.ts` soft-deletes any live leftovers before and after every run. Assert on loaded data (wait for `[aria-busy="true"]` to disappear) and wait for the write to be confirmed before reloading, since the UI updates optimistically. |
 | `npm run check` | The four repo checks below |
 | `npm run check:hygiene` | No BOM, valid UTF-8, no CR; lockfile native bindings for Windows, Linux and macOS; the Node and Vercel CLI pins; the `ci-verify` invariants |
@@ -240,7 +290,7 @@ Run these from the repo root, in Git Bash on Windows. `npm run verify` is the fu
 | `npm run db:migrations` | Lists local and remote migration versions |
 | `npm run db:types` | Regenerates `src/data/database.types.ts` (UTF-8, LF) |
 | `npm run db:ping` | One REST probe: `db: ok (200)`, or `PAUSED (540)` |
-| `npm run env:check` | Status of the 8 app keys in `.env.local` (`ok`, `missing`, `empty`, `placeholder`, `whitespace`); never values |
+| `npm run env:check` | Status of the 9 app keys in `.env.local` (`ok`, `missing`, `empty`, `placeholder`, `whitespace`); never values |
 | `npm run env:sync-vercel` | Read-only report: `.env.local` against the Vercel env matrix. `-- --apply` adds missing rows; `-- --apply --force` also overwrites rows that differ. |
 
 Other tools:
@@ -263,6 +313,8 @@ Values live only in `.env.local` (gitignored), in the Vercel project and in GitH
 | `VERCEL_PROJECT_NAME` | yes | – | – | Config | – |
 | `PROD_URL` | yes | – | – | Config | yes |
 | `MCP_SECRET` | yes | Secret | – | Config | – |
+| `BACKUP_PASSPHRASE` | yes | – | – | Config | yes |
+| `SUPABASE_DB_URL` (session pooler, with the password) | – (built by `node scripts/lib/db-url.mjs`) | – | – | – | yes |
 | `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | in `.vercel/project.json` | – | – | – | yes |
 | `VERCEL_TOKEN` | – | – | – | – | yes |
 
@@ -291,6 +343,12 @@ Rules:
 - **Every merge into `main` deploys production, and so does every merged Dependabot PR.** Merge only what should go live.
 - **Bot PRs.** The title and body of a bot-authored PR (Dependabot) are not scanned by `check:commits`, because they quote upstream release notes. Its commit messages and authors are always checked.
 - **The Vercel CLI is pinned** to exactly `vercel@61.1.0` in `.github/workflows/deploy.yml`, `scripts/ci/deploy-prod.sh` and `scripts/lib/vercel.mjs`. Bump all three in one commit (`check:hygiene` fails if they differ), and update the version in the docs that quote it.
+- **Nightly backup** (`.github/workflows/backup.yml`, 18:00 UTC, and on demand with `gh workflow run backup.yml`):
+  - the pinned Supabase CLI dumps the schema and the data with `--db-url` through the session pooler (GitHub runners have no IPv6; no access token needed)
+  - one-time setup: `node scripts/lib/db-url.mjs | gh secret set SUPABASE_DB_URL`
+  - the dump is encrypted with `gpg --symmetric` (AES-256, authenticated) using `BACKUP_PASSPHRASE` (the artifacts of a public repo are downloadable) and kept for 14 days
+  - it also keeps the free project from pausing
+  - restore: see `HANDOFF.md`, "Restore a backup"
 - **Deploys come only from GitHub Actions.** The Vercel Git integration is off, and `vercel.json` has `git.deploymentEnabled: false`. Redeploy with `gh workflow run deploy.yml --ref main`. A local deploy uses the same script (see `HANDOFF.md`).
 - **After merging a Dependabot npm PR, run `npm ci` on Windows**, then `npm run verify`.
 

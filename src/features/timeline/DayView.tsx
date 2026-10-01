@@ -1,13 +1,19 @@
 import { Fragment, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router'
-import { CalendarDays, Plus } from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router'
+import { CalendarDays, History, Plus, Repeat } from 'lucide-react'
 import { addDays, formatDateLabel, formatTime, isISODate, type ISODate } from '@/core/dates'
-import { layoutDay, nextStartTime, nowLineIndex, taskProgress } from '@/core/tasks'
+import { windowOf } from '@/core/schedule'
+import { layoutDay, nextStartTime, taskProgress, type Task, type TaskPatch } from '@/core/tasks'
+import { nowItemIndex, timelineItems } from '@/core/timeline'
 import { TaskIcon } from '@/components/TaskIcon'
 import { Button } from '@/components/ui/button'
 import { useAppSettings } from '@/data/queries/settings'
-import { useDayTasks, useTaskActions } from '@/data/queries/tasks'
+import { useDayTasks, useOverdueTasks, useTaskActions } from '@/data/queries/tasks'
+import { ViewSwitch } from '@/features/calendar/ViewSwitch'
+import { EnergyChip } from '@/features/energy/EnergyChip'
 import { useEditor } from '@/features/editor/editorContext'
+import { GapRow } from '@/features/timeline/GapRow'
+import { useTaskDrop } from '@/features/timeline/taskDrag'
 import { CheckCircle, TaskRow } from '@/features/timeline/TaskRow'
 import { WeekStrip } from '@/features/timeline/WeekStrip'
 import { useClock } from '@/features/timeline/useClock'
@@ -39,17 +45,30 @@ export function DayView() {
   const selected: ISODate =
     params.date !== undefined && isNavigableDate(params.date) ? params.date : today
   const query = useDayTasks(selected)
+  const overdue = useOverdueTasks(today).data?.length ?? 0
   const actions = useTaskActions()
   const editor = useEditor()
 
   const goTo = (date: ISODate) => {
     if (isNavigableDate(date)) void navigate(date === today ? '/' : `/day/${date}`)
   }
-  const openNew = () =>
+  const defaultStart = selected === today ? nextStartTime(nowMinutes) : settings.dayStart
+  const openNew = () => editor.openCreate({ date: selected, startTime: defaultStart })
+  const openAt = (start: string, minutes: number) =>
     editor.openCreate({
       date: selected,
-      startTime: selected === today ? nextStartTime(nowMinutes) : settings.dayStart,
+      startTime: start,
+      durationMin: Math.min(settings.defaultDuration, minutes),
     })
+  const scheduleAt = (task: Task, start: string) =>
+    actions.update(task, { date: selected, startTime: start, isAllDay: false }, null, {
+      undo: `Scheduled "${task.title}"`,
+    })
+  const reschedule = (task: Task, patch: TaskPatch) =>
+    actions.update(task, patch, null, {
+      undo: patch.startTime ? `Moved "${task.title}"` : `Resized "${task.title}"`,
+    })
+  const emptyDrop = useTaskDrop((task) => scheduleAt(task, defaultStart))
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -67,7 +86,11 @@ export function DayView() {
   })
 
   const { allDay, timed } = layoutDay(query.data ?? [])
-  const lineAt = selected === today ? nowLineIndex(timed, nowMinutes) : -1
+  // Free time that has already passed today is not offered.
+  const notBefore = selected === today ? nowMinutes : selected < today ? 1440 : 0
+  const items = timelineItems(timed, windowOf(settings), notBefore)
+  const lastTask = timed.at(-1)
+  const lineAt = selected === today ? nowItemIndex(items, nowMinutes) : -1
   const isEmpty = query.data !== undefined && allDay.length === 0 && timed.length === 0
 
   return (
@@ -77,12 +100,18 @@ export function DayView() {
           <h1 className="text-2xl font-semibold tracking-tight">
             {formatDateLabel(selected, 'MMMM yyyy')}
           </h1>
-          <p className="text-sm text-muted-foreground">
-            {selected === today ? 'Today, ' : ''}
-            {formatDateLabel(selected, 'EEEE d')}
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>
+              {selected === today ? 'Today, ' : ''}
+              {formatDateLabel(selected, 'EEEE d')}
+            </span>
+            {settings.energyEnabled && query.data ? (
+              <EnergyChip tasks={query.data} limit={settings.energyLimit} />
+            ) : null}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <ViewSwitch date={selected} today={today} active="day" />
           {selected === today ? null : (
             <Button variant="outline" size="sm" onClick={() => goTo(today)}>
               <CalendarDays data-icon="inline-start" /> Today
@@ -95,6 +124,19 @@ export function DayView() {
       </header>
 
       <WeekStrip selected={selected} today={today} weekStart={settings.weekStart} onSelect={goTo} />
+
+      {selected === today && overdue > 0 ? (
+        <Link
+          to="/replan"
+          className="flex items-center gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm hover:bg-amber-500/15"
+        >
+          <History className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span className="flex-1">
+            {overdue} unfinished {overdue === 1 ? 'task' : 'tasks'} from earlier days
+          </span>
+          <span className="font-medium">Replan</span>
+        </Link>
+      ) : null}
 
       <QueryState query={query}>
         {allDay.length > 0 ? (
@@ -111,6 +153,7 @@ export function DayView() {
                 >
                   <TaskIcon icon={task.icon} className="size-4" />
                   {task.title}
+                  {task.recurrence ? <Repeat aria-label="Repeats" className="size-3" /> : null}
                 </button>
                 <CheckCircle task={task} onToggle={actions.toggleComplete} />
               </div>
@@ -119,7 +162,13 @@ export function DayView() {
         ) : null}
 
         {isEmpty ? (
-          <div className="flex flex-col items-center gap-3 py-16 text-center text-muted-foreground">
+          <div
+            {...emptyDrop.bind}
+            className={cn(
+              'flex flex-col items-center gap-3 rounded-xl py-16 text-center text-muted-foreground',
+              emptyDrop.over && 'bg-primary/10 ring-2 ring-primary/40',
+            )}
+          >
             <p>Nothing planned for this day.</p>
             <Button variant="outline" onClick={openNew}>
               <Plus data-icon="inline-start" /> Add a task
@@ -127,22 +176,35 @@ export function DayView() {
           </div>
         ) : (
           <ol aria-label="Timeline" className="flex flex-col">
-            {timed.map((task, i) => (
-              <Fragment key={task.id}>
+            {items.map((item, i) => (
+              <Fragment key={item.kind === 'task' ? item.task.id : `gap-${item.start}`}>
                 {i === lineAt ? (
                   <NowLine minutes={nowMinutes} format={settings.timeFormat} />
                 ) : null}
-                <TaskRow
-                  task={task}
-                  timeFormat={settings.timeFormat}
-                  progress={taskProgress(task, today, nowMinutes)}
-                  isLast={i === timed.length - 1}
-                  onOpen={editor.openEdit}
-                  onToggle={actions.toggleComplete}
-                />
+                {item.kind === 'task' ? (
+                  <TaskRow
+                    task={item.task}
+                    timeFormat={settings.timeFormat}
+                    progress={taskProgress(item.task, today, nowMinutes)}
+                    isLast={item.task === lastTask}
+                    today={today}
+                    overlaps={item.overlaps}
+                    onOpen={editor.openEdit}
+                    onToggle={actions.toggleComplete}
+                    onReschedule={reschedule}
+                  />
+                ) : (
+                  <GapRow
+                    start={item.start}
+                    minutes={item.minutes}
+                    timeFormat={settings.timeFormat}
+                    onAdd={openAt}
+                    onDropTask={scheduleAt}
+                  />
+                )}
               </Fragment>
             ))}
-            {lineAt === timed.length && timed.length > 0 ? (
+            {lineAt === items.length && items.length > 0 ? (
               <NowLine minutes={nowMinutes} format={settings.timeFormat} />
             ) : null}
           </ol>

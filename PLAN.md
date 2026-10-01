@@ -768,19 +768,19 @@ Each phase ends with something **deployed and usable**. Work in small commits.
 - **Done when:** in the Claude app, "plan my tomorrow" creates tasks that appear live on the timeline, and `undo_batch` removes them.
 
 ### Phase 3: Structured parity (size: L)
-- [ ] Recurring tasks, fully: editor UI, virtual occurrences, overrides, this/future/all scopes (T12)
-- [ ] Gaps + free-time rows + tap-to-add (T8); overlap warnings (T9)
-- [ ] Drag to move and resize on the timeline; inbox → timeline drag on desktop (T10, T11)
-- [ ] Week and month views (T13)
-- [ ] Replan screen (T14)
-- [ ] Energy monitor: field in the editor + day header chip (E1)
-- [ ] Focus mode with intervals (F1, F2)
-- [ ] Alerts in the editor + desktop notifications (N1, N2)
-- [ ] Quick-add NL parsing, icon and color suggestions (T15, T16)
-- [ ] Search, undo snackbar, duplicate, priority and due date (T17, T19, T20, T22)
-- [ ] Command palette + shortcuts (S6); PWA install + offline read cache (S7, S9)
-- [ ] Nightly backup workflow (S11)
-- **Done when:** it can replace Structured for a full week of daily use.
+- [x] Recurring tasks, fully: editor UI, virtual occurrences, overrides, this/future/all scopes (T12)
+- [x] Gaps + free-time rows + tap-to-add (T8); overlap warnings (T9)
+- [x] Drag to move and resize on the timeline; inbox → timeline drag on desktop (T10, T11)
+- [x] Week and month views (T13)
+- [x] Replan screen (T14)
+- [x] Energy monitor: field in the editor + day header chip (E1)
+- [x] Focus mode with intervals (F1, F2)
+- [x] Alerts in the editor + desktop notifications (N1, N2)
+- [x] Quick-add NL parsing, icon and color suggestions (T15, T16)
+- [x] Search, undo snackbar, duplicate, priority and due date (T17, T19, T20, T22)
+- [x] Command palette + shortcuts (S6); PWA install + offline read cache (S7, S9)
+- [x] Nightly backup workflow (S11)
+- **Done when:** it can replace Structured for a full week of daily use. (Every feature is shipped and tested; the week of daily use is the owner's check.)
 
 ### Phase 4: Android APK (size: M)
 - [ ] Capacitor init, Android platform, app icon and splash

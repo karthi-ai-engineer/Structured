@@ -112,11 +112,10 @@ describe('MCP server (real project)', () => {
       rows.data?.every((r) => r.source === 'mcp' && r.batch_id === created.data.batch_id),
     ).toBe(true)
 
+    // The real planner's repeating tasks (the daily defaults) show on every day: look at ours.
+    const ours = (tasks: { title: string }[]) => tasks.filter((t) => t.title.startsWith(PREFIX))
     const day = (await call('get_schedule', { start_date: DAY })).data.days[0]
-    expect(day.timed.map((t: { title: string }) => t.title)).toEqual([
-      plan[0]?.title,
-      plan[1]?.title,
-    ])
+    expect(ours(day.timed).map((t) => t.title)).toEqual([plan[0]?.title, plan[1]?.title])
     expect(day.free_slots[0]).toMatchObject({ start: expect.any(String) })
 
     const moved = await call('move_tasks', {
@@ -148,7 +147,7 @@ describe('MCP server (real project)', () => {
     // Forced, it removes them too, and the batch counts as undone.
     const forced = await call('undo_batch', { batch_id: created.data.batch_id, force: true })
     expect(forced.summary).toContain('Undid "Created 3 tasks"')
-    expect((await call('get_schedule', { start_date: DAY })).data.days[0].timed).toEqual([])
+    expect(ours((await call('get_schedule', { start_date: DAY })).data.days[0].timed)).toEqual([])
     const batch = await admin
       .from('mcp_batches')
       .select('undone_at')

@@ -126,9 +126,9 @@ test.describe('planner', () => {
     await d.getByLabel('Title').fill(title)
 
     // Clearing the date field mid-edit keeps the task scheduled on its date.
-    await d.getByLabel('Date').fill('')
+    await d.getByLabel('Date', { exact: true }).fill('')
     await expect(d.getByRole('switch', { name: 'Scheduled' })).toBeChecked()
-    await expect(d.getByLabel('Date')).toHaveValue('2026-10-05')
+    await expect(d.getByLabel('Date', { exact: true })).toHaveValue('2026-10-05')
 
     // A cleared start time blocks saving: no timed task without a time.
     await d.getByLabel('Start').fill('')
