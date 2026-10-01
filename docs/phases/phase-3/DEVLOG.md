@@ -223,3 +223,17 @@
 - **The Phase 2 MCP live test** expected a day's schedule to hold only its own tasks. Since WP1, the seeded daily defaults show on every day, so it now looks at `__test__` tasks only. It was broken from WP1 until now: the suite is opt-in and was not rerun after WP1.
 - **e2e:** `getByLabel('Date')` also matched the new "Due date" field; the e2e tests now match it exactly.
 
+### Code review, round 1 (PR #32): changes requested; 2 major and 7 minor findings, all fixed
+- **Major: short weekday names rewrote ordinary titles** ("Sun salutation", "SAT prep").
+  - Short names count only after "on", "next" or "this"; full names always do.
+  - "Double quotes" keep words as typed.
+  - "on" is dropped only when a date follows.
+- **Major: a due-date change on a repeating task with "All" was dropped.** It now reaches the series row (occurrences keep their own).
+- **Minor fixes:**
+  - undo applies to the task's current values, so a later change survives
+  - "at 1" to "at 7" mean the afternoon; a bare "m" stops at 90 ("Run 100m" stays a title)
+  - search falls back to an ended series' last occurrence
+  - search results live under the task keys, so edits refresh them
+  - Duplicate opens a new, prefilled task with the saved values (no early insert, no lost edits)
+  - a series' due date never marks later occurrences overdue
+

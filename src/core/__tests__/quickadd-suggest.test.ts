@@ -31,7 +31,9 @@ describe('parseQuickAdd', () => {
     })
     // A bare number is not a time; "at 7" is.
     expect(parseQuickAdd('Call 3 people', TODAY).startTime).toBeUndefined()
-    expect(parseQuickAdd('Call at 7', TODAY)).toMatchObject({ title: 'Call', startTime: '07:00' })
+    // "at 1" to "at 7" are in the afternoon.
+    expect(parseQuickAdd('Call at 7', TODAY)).toMatchObject({ title: 'Call', startTime: '19:00' })
+    expect(parseQuickAdd('Call at 8', TODAY).startTime).toBe('08:00')
   })
 
   it('reads dates', () => {
@@ -40,7 +42,9 @@ describe('parseQuickAdd', () => {
     expect(date('tmrw')).toBe('2026-10-02')
     expect(date('thursday')).toBe('2026-10-01') // today counts
     expect(date('next thu')).toBe('2026-10-08')
-    expect(date('mon')).toBe('2026-10-05')
+    expect(date('mon')).toBeUndefined() // short names need "on", "next" or "this"
+    expect(date('on mon')).toBe('2026-10-05')
+    expect(date('this sat')).toBe('2026-10-03')
     expect(date('next monday')).toBe('2026-10-05')
     expect(date('in 3 days')).toBe('2026-10-04')
     expect(date('in 2 weeks')).toBe('2026-10-15')
@@ -157,5 +161,32 @@ describe('suggestions', () => {
     expect(suggestStyle('GYM', history)).toEqual({ icon: 'zap', color: 'teal' })
     expect(suggestStyle('Gym later', history)).toEqual({ icon: 'dumbbell', color: 'orange' })
     expect(suggestStyle('  ', history)).toEqual({ icon: null, color: null })
+  })
+})
+
+describe('parseQuickAdd keeps ordinary titles (code review)', () => {
+  it('leaves short weekday and month words alone', () => {
+    for (const title of [
+      'Sun salutation',
+      'SAT prep',
+      'Wed planning',
+      'May review',
+      'Report on march madness',
+    ]) {
+      expect(parseQuickAdd(title, TODAY), title).toEqual({ title, found: [] })
+    }
+  })
+
+  it('keeps quoted text as typed', () => {
+    expect(parseQuickAdd('"Gym tomorrow" class 6pm', TODAY)).toMatchObject({
+      title: 'Gym tomorrow class',
+      startTime: '18:00',
+    })
+    expect(parseQuickAdd('"" Read', TODAY)).toEqual({ title: 'Read', found: [] })
+  })
+
+  it('a bare m stops at 90 minutes; longer needs min', () => {
+    expect(parseQuickAdd('Run 100m', TODAY)).toEqual({ title: 'Run 100m', found: [] })
+    expect(parseQuickAdd('Study 120min', TODAY)).toMatchObject({ title: 'Study', durationMin: 120 })
   })
 })

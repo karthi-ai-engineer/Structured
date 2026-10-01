@@ -52,7 +52,8 @@ export interface TasksRepo {
   applySeriesWrite(write: SeriesWrite): Promise<void>
   /**
    * Tasks whose title or notes contain `query` (PLAN.md T17): one-off tasks (newest date first,
-   * inbox included) and, for repeating series, their next occurrence from `today`.
+   * inbox included) and, for repeating series, their next occurrence from `today` (or the last
+   * one, for a series that has ended). The occurrence is the series template, without overrides.
    */
   search(query: string, today: ISODate): Promise<Task[]>
   /** Creates the default daily series once; true when this call created them. */
@@ -244,15 +245,19 @@ export function createTasksRepo(db: Db): TasksRepo {
       const next = series.data.flatMap((row) => {
         const master = masterFromRow(row)
         if (!master) return []
-        const from = today > master.task.date ? today : master.task.date
-        const [date] = occurrencesIn(
+        const start = master.task.date
+        const from = today > start ? today : start
+        const [upcoming] = occurrencesIn(master.rule, start, master.until, from, addDays(from, 400))
+        // Ended (or rarer than every 400 days): its last occurrence before today, else its first.
+        const before = occurrencesIn(
           master.rule,
-          master.task.date,
+          start,
           master.until,
-          from,
-          addDays(from, 400),
+          addDays(from, -400),
+          addDays(from, -1),
         )
-        return date ? [generatedOccurrence(master, date)] : []
+        const date = upcoming ?? before.at(-1) ?? start
+        return [generatedOccurrence(master, date)]
       })
       return [...next, ...found.data.map(rowToTask)]
     },

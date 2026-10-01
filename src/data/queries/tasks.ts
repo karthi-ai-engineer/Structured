@@ -278,6 +278,15 @@ export function useTaskActions() {
     onSettled: settle,
   })
 
+  /** The task as the cache has it now (an undo must not overwrite later changes). */
+  const latest = (id: string, fallback: Task): Task => {
+    for (const [, data] of qc.getQueriesData<Task[]>({ queryKey: taskKeys.all })) {
+      const found = data?.find((t) => t.id === id)
+      if (found) return found
+    }
+    return fallback
+  }
+
   /** The previous values of the fields a patch changes (to undo it). */
   const before = (task: Task, patch: TaskPatch): TaskPatch =>
     Object.fromEntries(Object.keys(patch).map((k) => [k, task[k as keyof TaskPatch]]))
@@ -306,7 +315,7 @@ export function useTaskActions() {
         const back = before(task, patch)
         notify(options.undo, {
           label: 'Undo',
-          run: () => change(applyPatch(task, patch), back, null),
+          run: () => change(latest(task.id, applyPatch(task, patch)), back, null),
         })
       }
     },
@@ -327,7 +336,7 @@ export function useTaskActions() {
       if (patch.completedAt) {
         notify(`Done: "${task.title}"`, {
           label: 'Undo',
-          run: () => change({ ...task, ...patch }, { completedAt: null }, null),
+          run: () => change(latest(task.id, { ...task, ...patch }), { completedAt: null }, null),
         })
       }
     },

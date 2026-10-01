@@ -136,9 +136,11 @@ function template(draft: TaskDraft): TaskDraft {
 const subtaskShape = (subtasks: readonly Subtask[]) =>
   JSON.stringify(subtasks.map((s) => [s.id, s.title]))
 
-/** The fields the user changed: shared fields, plus the subtask list (as a template). */
+/** The fields the user changed: shared fields, the due date (series row only), and the subtask
+ *  list (as a template). */
 export function changedFields(task: Task, draft: TaskDraft): TaskPatch {
   const out: Record<string, unknown> = {}
+  if (draft.dueDate !== task.dueDate) out.dueDate = draft.dueDate
   for (const key of SHARED_FIELDS) {
     if (JSON.stringify(draft[key]) !== JSON.stringify(task[key])) out[key] = draft[key]
   }

@@ -37,10 +37,9 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAppSettings } from '@/data/queries/settings'
-import { newTask, useCachedTasks, useDayTasks, useTaskActions } from '@/data/queries/tasks'
+import { useCachedTasks, useDayTasks, useTaskActions } from '@/data/queries/tasks'
 import { parseQuickAdd } from '@/core/quickadd'
 import { suggestStyle } from '@/core/suggest'
-import { nowIso } from '@/core/dates'
 import { quickAddLabels, withQuickAdd } from '@/features/editor/quickAddDraft'
 import { useEditor } from '@/features/editor/editorContext'
 import type { EditorRequest } from '@/features/editor/editorContext'
@@ -133,7 +132,9 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
   // New tasks: quick-add syntax in the title (T15), and an icon and color that follow the title
   // (T16) until one is picked by hand.
   const quick = editing ? null : parseQuickAdd(draft.title, today)
-  const [stylePicked, setStylePicked] = useState(editing !== null)
+  const [stylePicked, setStylePicked] = useState(
+    editing !== null || (request.mode === 'create' && request.defaults.icon !== undefined),
+  )
   const pick = (patch: Partial<TaskDraft>) => {
     setStylePicked(true)
     set(patch)
@@ -195,12 +196,26 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
     }
   }
 
-  /** A copy of this task (T22), opened at once so it can go to another day. */
+  /** A copy of this task as saved (T22): a new task with its values, to place and add. Unsaved
+   *  edits stay with this task (they are not copied). */
   function duplicate() {
-    const copy = { ...cleanDraft(), subtasks: draft.subtasks.map((s) => ({ ...s, done: false })) }
-    const id = crypto.randomUUID()
-    actions.create(id, copy)
-    editor.openEdit(newTask(id, copy, nowIso()))
+    if (!editing) return
+    const { title, notes, icon, color, subtasks, date, startTime, durationMin, isAllDay } = editing
+    editor.openCreate({
+      title,
+      notes,
+      icon,
+      color,
+      subtasks: subtasks.map((s) => ({ ...s, id: crypto.randomUUID(), done: false })),
+      date,
+      startTime,
+      durationMin,
+      isAllDay,
+      energy: editing.energy,
+      alerts: editing.alerts,
+      priority: editing.priority,
+      dueDate: editing.dueDate,
+    })
   }
 
   function save(event?: FormEvent) {

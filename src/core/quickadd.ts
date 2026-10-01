@@ -5,11 +5,15 @@
  *
  * Dates:
  * - today, tomorrow
- * - a weekday name (the next one, today included); "next <weekday>" (after today)
+ * - a full weekday name ("friday": the next one, today included); a short one ("fri") only
+ *   after "on", "next" or "this"; "next <weekday>" is after today
  * - "in 3 days" or "in 2 weeks"
  * - "5 oct", "oct 5" (the next one), 2026-10-05
- * Times: 7am, 7:30pm, 19:00, "at 7" (24 h), noon. Durations: 45m, 1h, 1h30, 1.5h, 90min (with
- * an optional "for"). Priority: !1 to !3 or !high, !med, !low. Energy: ~-1 to ~3.
+ * Times: 7am, 7:30pm, 19:00, noon, "at 7". "at 1" to "at 7" mean the afternoon (17:00 for
+ * "at 5"); "at 8" to "at 23" are as written.
+ * Durations: 45m (up to 90), 1h, 1h30, 1.5h, 120min (with an optional "for").
+ * Priority: !1 to !3 or !high, !med, !low. Energy: ~-1 to ~3.
+ * Text in "double quotes" is kept as typed, quotes removed: "Sun salutation" stays a title.
  */
 
 import { addDays, dayOfWeek, fromMinutes, isISODate, parseISODate, type ISODate } from './dates.ts'
@@ -64,6 +68,8 @@ const PRIORITY_WORDS: Record<string, Priority> = {
   low: 3,
   l: 3,
 }
+/** Words after which a short weekday ("fri") is a date. */
+const WEEKDAY_LEADS = new Set(['on', 'next', 'this'])
 
 /** The index of a name that `word` (3 letters or more) starts, or -1. */
 function prefixOf(names: readonly string[], word: string): number {
@@ -71,10 +77,12 @@ function prefixOf(names: readonly string[], word: string): number {
   return w.length >= 3 ? names.findIndex((name) => name.startsWith(w)) : -1
 }
 
-/** 0 (Sunday) .. 6 for "mon", "tues", "thursday" …; null otherwise. */
-function weekdayOf(word: string): number | null {
-  const index = prefixOf(WEEKDAY_NAMES, word)
-  return index >= 0 ? index : null
+/** 0 (Sunday) .. 6 for a weekday: the full name, or (`short`) any 3-letter-or-longer start. */
+function weekdayOf(word: string, short: boolean): number | null {
+  const w = word.toLowerCase().replace(/[.,]$/, '')
+  const index = prefixOf(WEEKDAY_NAMES, w)
+  if (index < 0) return null
+  return short || WEEKDAY_NAMES[index] === w ? index : null
 }
 
 /** 1 .. 12 for "oct", "sept", "december" …; null otherwise. */
@@ -110,92 +118,129 @@ function parseTime(text: string): string | null {
   return fromMinutes(hour * 60 + minute)
 }
 
+/** "at 5" means 17:00: a bare hour from 1 to 7 is in the afternoon. */
+function parseAtHour(text: string): string | null {
+  if (!/^\d{1,2}$/.test(text)) return null
+  const hour = Number(text)
+  if (hour > 23) return null
+  return fromMinutes((hour >= 1 && hour <= 7 ? hour + 12 : hour) * 60)
+}
+
 function parseDuration(text: string): number | null {
   const t = text.toLowerCase()
   let m = /^(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours)$/.exec(t)
   if (m) return Math.round(Number(m[1]) * 60)
-  m = /^(\d+)\s*(m|min|mins|minute|minutes)$/.exec(t)
+  // A bare "m" stops at 90 ("Run 100m" is a distance); longer needs "min".
+  m = /^(\d+)m$/.exec(t)
+  if (m) return Number(m[1]) <= 90 ? Number(m[1]) : null
+  m = /^(\d+)\s*(min|mins|minute|minutes)$/.exec(t)
   if (m) return Number(m[1])
   m = /^(\d+)h(\d{1,2})m?$/.exec(t)
   if (m) return Number(m[1]) * 60 + Number(m[2])
   return null
 }
 
+/** Splits into words; "quoted text" stays one literal word (quotes removed). */
+function tokenize(input: string): { word: string; literal: boolean }[] {
+  const out: { word: string; literal: boolean }[] = []
+  for (const match of input.matchAll(/"([^"]*)"|(\S+)/g)) {
+    if (match[1] !== undefined) {
+      if (match[1].trim() !== '') out.push({ word: match[1].trim(), literal: true })
+    } else if (match[2]) {
+      out.push({ word: match[2], literal: false })
+    }
+  }
+  return out
+}
+
+/** A date starting at word `i`: its value and how many words it uses. */
+function dateAt(
+  words: readonly string[],
+  i: number,
+  today: ISODate,
+  lead: string | null,
+): { date: ISODate; length: number } | null {
+  const word = words[i] ?? ''
+  const lower = word.toLowerCase()
+  const next = words[i + 1] ?? ''
+  const after = words[i + 2] ?? ''
+  if (lower === 'today' || lower === 'tod') return { date: today, length: 1 }
+  if (lower === 'tomorrow' || lower === 'tmr' || lower === 'tmrw') {
+    return { date: addDays(today, 1), length: 1 }
+  }
+  if (isISODate(word)) return { date: word, length: 1 }
+  const weekday = weekdayOf(word, lead !== null && WEEKDAY_LEADS.has(lead))
+  if (weekday !== null) {
+    const ahead = (weekday - dayOfWeek(today) + 7) % 7
+    return { date: addDays(today, lead === 'next' && ahead === 0 ? 7 : ahead), length: 1 }
+  }
+  if (lower === 'in' && /^\d{1,3}$/.test(next) && /^(day|days|week|weeks)$/i.test(after)) {
+    return { date: addDays(today, Number(next) * (/^week/i.test(after) ? 7 : 1)), length: 3 }
+  }
+  const monthFirst = monthOf(word)
+  if (monthFirst !== null && /^\d{1,2}(st|nd|rd|th)?$/i.test(next)) {
+    const date = nextMonthDay(today, monthFirst, parseInt(next, 10))
+    if (date) return { date, length: 2 }
+  }
+  const monthAfter = monthOf(next)
+  if (monthAfter !== null && /^\d{1,2}(st|nd|rd|th)?$/i.test(word)) {
+    const date = nextMonthDay(today, monthAfter, parseInt(word, 10))
+    if (date) return { date, length: 2 }
+  }
+  return null
+}
+
 export function parseQuickAdd(input: string, today: ISODate): QuickAdd {
-  const words = input.trim().split(/\s+/).filter(Boolean)
+  const tokens = tokenize(input)
+  const words = tokens.map((t) => (t.literal ? '' : t.word))
   const result: QuickAdd = { title: '', found: [] }
   const keep: string[] = []
-  const take = (kind: QuickAddToken, text: string) => result.found.push({ kind, text })
+  const take = (kind: QuickAddToken, from: number, length: number) =>
+    result.found.push({
+      kind,
+      text: tokens
+        .slice(from, from + length)
+        .map((t) => t.word)
+        .join(' '),
+    })
 
-  for (let i = 0; i < words.length; i++) {
-    const word = words[i] ?? ''
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]
+    if (!token) continue
+    if (token.literal) {
+      keep.push(token.word)
+      continue
+    }
+    const word = token.word
     const lower = word.toLowerCase()
     const next = words[i + 1] ?? ''
-    const after = words[i + 2] ?? ''
 
     if (result.date === undefined) {
-      if (lower === 'today' || lower === 'tod') {
-        result.date = today
-        take('date', word)
-        continue
-      }
-      if (lower === 'tomorrow' || lower === 'tmr' || lower === 'tmrw') {
-        result.date = addDays(today, 1)
-        take('date', word)
-        continue
-      }
-      if (isISODate(word)) {
-        result.date = word
-        take('date', word)
-        continue
-      }
-      const isNext = lower === 'next' && weekdayOf(next) !== null
-      const weekday = isNext ? weekdayOf(next) : weekdayOf(word)
-      if (weekday !== null) {
-        const ahead = (weekday - dayOfWeek(today) + 7) % 7
-        result.date = addDays(today, isNext && ahead === 0 ? 7 : ahead)
-        take('date', isNext ? `${word} ${next}` : word)
-        if (isNext) i += 1
-        continue
-      }
-      if (lower === 'in' && /^\d{1,3}$/.test(next) && /^(day|days|week|weeks)$/i.test(after)) {
-        const n = Number(next) * (/^week/i.test(after) ? 7 : 1)
-        result.date = addDays(today, n)
-        take('date', `${word} ${next} ${after}`)
-        i += 2
-        continue
-      }
-      const monthFirst = monthOf(word)
-      if (monthFirst !== null && /^\d{1,2}(st|nd|rd|th)?$/i.test(next)) {
-        const date = nextMonthDay(today, monthFirst, parseInt(next, 10))
-        if (date) {
-          result.date = date
-          take('date', `${word} ${next}`)
-          i += 1
+      // "on friday", "next fri", "this sat": the lead word goes with the date.
+      if (WEEKDAY_LEADS.has(lower)) {
+        const led = dateAt(words, i + 1, today, lower)
+        if (led) {
+          result.date = led.date
+          take('date', i, led.length + 1)
+          i += led.length
           continue
         }
       }
-      const monthAfter = monthOf(next)
-      if (monthAfter !== null && /^\d{1,2}(st|nd|rd|th)?$/i.test(word)) {
-        const date = nextMonthDay(today, monthAfter, parseInt(word, 10))
-        if (date) {
-          result.date = date
-          take('date', `${word} ${next}`)
-          i += 1
-          continue
-        }
+      const found = dateAt(words, i, today, null)
+      if (found) {
+        result.date = found.date
+        take('date', i, found.length)
+        i += found.length - 1
+        continue
       }
-      if (lower === 'on' && (weekdayOf(next) !== null || monthOf(next) !== null)) continue
     }
 
     if (result.startTime === undefined) {
-      if (lower === 'at' && /^\d{1,2}(:\d{2})?(am|pm)?$/i.test(next)) {
-        const time =
-          parseTime(next) ??
-          (/^\d{1,2}$/.test(next) && Number(next) < 24 ? fromMinutes(Number(next) * 60) : null)
+      if (lower === 'at') {
+        const time = parseTime(next) ?? parseAtHour(next)
         if (time) {
           result.startTime = time
-          take('time', `${word} ${next}`)
+          take('time', i, 2)
           i += 1
           continue
         }
@@ -203,7 +248,7 @@ export function parseQuickAdd(input: string, today: ISODate): QuickAdd {
       const time = parseTime(word)
       if (time) {
         result.startTime = time
-        take('time', word)
+        take('time', i, 1)
         continue
       }
     }
@@ -213,7 +258,7 @@ export function parseQuickAdd(input: string, today: ISODate): QuickAdd {
       const duration = forDuration ?? parseDuration(word)
       if (duration !== null && duration >= 0 && duration <= 1440) {
         result.durationMin = duration
-        take('duration', forDuration !== null ? `${word} ${next}` : word)
+        take('duration', i, forDuration !== null ? 2 : 1)
         if (forDuration !== null) i += 1
         continue
       }
@@ -223,14 +268,14 @@ export function parseQuickAdd(input: string, today: ISODate): QuickAdd {
       const priority = PRIORITY_WORDS[lower.slice(1)]
       if (priority) {
         result.priority = priority
-        take('priority', word)
+        take('priority', i, 1)
         continue
       }
     }
 
     if (result.energy === undefined && /^~(-1|[0-3])$/.test(word)) {
       result.energy = Number(word.slice(1)) as EnergyLevel
-      take('energy', word)
+      take('energy', i, 1)
       continue
     }
 

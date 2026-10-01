@@ -14,12 +14,17 @@ export function TaskMeta({
   task,
   today,
 }: {
-  task: Pick<Task, 'priority' | 'dueDate' | 'completedAt'>
+  task: Pick<Task, 'priority' | 'dueDate' | 'completedAt' | 'recurrence'>
   today: ISODate
 }) {
   if (task.priority === null && task.dueDate === null) return null
   const label = PRIORITIES.find((p) => p.value === task.priority)?.label
-  const overdue = task.dueDate !== null && task.dueDate < today && task.completedAt === null
+  // Occurrences share their series' due date: none of them is "overdue" because of it.
+  const overdue =
+    task.dueDate !== null &&
+    task.dueDate < today &&
+    task.completedAt === null &&
+    task.recurrence === null
   return (
     <span className="inline-flex items-center gap-1.5">
       {task.priority !== null ? (

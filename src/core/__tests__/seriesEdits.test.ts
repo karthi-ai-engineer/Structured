@@ -148,6 +148,19 @@ describe('scopes', () => {
   })
 })
 
+describe('due date edits (code review)', () => {
+  it('reach the series row with "all", never the occurrences', () => {
+    const occ = occurrence('2026-10-05')
+    expect(planEdit(occ, draftOf(occ, { dueDate: '2026-12-01' }), DAILY, 'all', NEW_ID)).toEqual({
+      kind: 'series',
+      seriesId: SERIES,
+      patch: { dueDate: '2026-12-01' },
+      shared: {},
+      reset: false,
+    })
+  })
+})
+
 describe('changedFields', () => {
   it('only what differs; subtasks as an undone template when the list changed', () => {
     const occ = occurrence('2026-10-05')

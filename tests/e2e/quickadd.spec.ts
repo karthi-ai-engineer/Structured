@@ -59,7 +59,7 @@ test('quick add, suggestions, undo, duplicate and search', async ({ page }) => {
   await restored
   await expect(row()).toHaveCount(1)
 
-  // Duplicate to the next day.
+  // Duplicate to the next day: a new task, prefilled.
   await row()
     .getByRole('button', { name: `Open ${title}` })
     .first()
@@ -68,7 +68,8 @@ test('quick add, suggestions, undo, duplicate and search', async ({ page }) => {
   await expect(dialog.getByLabel('Title')).toHaveValue(title)
   await dialog.getByLabel('Date', { exact: true }).fill('2099-09-08')
   const copied = saved(page, '2099-09-08')
-  await dialog.getByRole('button', { name: 'Save' }).click()
+  // The copy is a new task with the saved values: nothing is written until it is added.
+  await dialog.getByRole('button', { name: 'Add task' }).click()
   await copied
   await openDay(page, '2099-09-08')
   await expect(row()).toHaveCount(1)

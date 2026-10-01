@@ -6,6 +6,7 @@ import { colorHex, type Task } from '@/core/tasks'
 import { TaskIcon } from '@/components/TaskIcon'
 import { TaskMeta } from '@/components/TaskMeta'
 import { Input } from '@/components/ui/input'
+import { taskKeys } from '@/data/queries/keys'
 import { tasks } from '@/data/queries/repos'
 import { useAppSettings } from '@/data/queries/settings'
 import { useEditor } from '@/features/editor/editorContext'
@@ -28,7 +29,7 @@ export function SearchView() {
   }, [text])
 
   const results = useQuery({
-    queryKey: ['search', query, today],
+    queryKey: [...taskKeys.all, 'search', query, today],
     queryFn: () => tasks().search(query, today),
     enabled: query.length >= 2,
   })
