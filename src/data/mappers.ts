@@ -45,6 +45,8 @@ export function draftToInsert(id: string | undefined, draft: TaskDraft): TablesI
     is_all_day: draft.isAllDay,
     energy: draft.energy,
     alerts: draft.alerts,
+    priority: draft.priority,
+    due_date: draft.dueDate,
     source: 'app',
   }
 }
@@ -62,6 +64,8 @@ export function patchToUpdate(patch: TaskPatch): TablesUpdate<'tasks'> {
   if (patch.isAllDay !== undefined) update.is_all_day = patch.isAllDay
   if (patch.energy !== undefined) update.energy = patch.energy
   if (patch.alerts !== undefined) update.alerts = patch.alerts
+  if (patch.priority !== undefined) update.priority = patch.priority
+  if (patch.dueDate !== undefined) update.due_date = patch.dueDate
   if (patch.completedAt !== undefined) update.completed_at = patch.completedAt
   return update
 }

@@ -29,7 +29,9 @@ export function ReplanView() {
   /** Today, in the first free slot that fits (or the next quarter hour if none does). */
   /** The move to today: all-day tasks keep their all-day place; timed ones get `startTime`. */
   function moveToToday(task: Task, startTime: string) {
-    actions.update(task, task.isAllDay ? { date: today } : { date: today, startTime })
+    actions.update(task, task.isAllDay ? { date: today } : { date: today, startTime }, null, {
+      undo: `Moved "${task.title}" to today`,
+    })
   }
 
   function toToday(task: Task) {
@@ -109,7 +111,11 @@ export function ReplanView() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => actions.update(task, { date: addDays(today, 1) })}
+                          onClick={() =>
+                            actions.update(task, { date: addDays(today, 1) }, null, {
+                              undo: `Moved "${task.title}" to tomorrow`,
+                            })
+                          }
                         >
                           Tomorrow
                         </Button>
@@ -117,7 +123,11 @@ export function ReplanView() {
                           size="icon-sm"
                           variant="ghost"
                           aria-label={`Move to the inbox: ${task.title}`}
-                          onClick={() => actions.update(task, { date: null })}
+                          onClick={() =>
+                            actions.update(task, { date: null }, null, {
+                              undo: `Moved "${task.title}" to the inbox`,
+                            })
+                          }
                         >
                           <Inbox />
                         </Button>

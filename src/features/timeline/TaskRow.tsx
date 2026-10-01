@@ -4,6 +4,7 @@ import { formatDuration, formatTime, toMinutes, type TimeFormat } from '@/core/d
 import { colorHex, pillHeight, taskEnd, type Task, type TaskPatch } from '@/core/tasks'
 import { movedStart, resizedDuration } from '@/core/timeline'
 import { TaskIcon } from '@/components/TaskIcon'
+import { TaskMeta } from '@/components/TaskMeta'
 import { useVerticalDrag } from '@/features/timeline/useVerticalDrag'
 import { cn } from '@/lib/utils'
 
@@ -38,6 +39,7 @@ export function TaskRow({
   timeFormat,
   progress,
   isLast,
+  today,
   overlaps = false,
   onOpen,
   onToggle,
@@ -47,6 +49,8 @@ export function TaskRow({
   timeFormat: TimeFormat
   progress: number
   isLast: boolean
+  /** For the due-date badge (overdue in red). */
+  today: string
   overlaps?: boolean
   onOpen: (task: Task) => void
   onToggle: (task: Task) => void
@@ -138,6 +142,7 @@ export function TaskRow({
           {formatTime(start, timeFormat)}
           {shown.durationMin > 0 ? ` – ${endLabel} (${formatDuration(shown.durationMin)})` : ''}
           {task.recurrence ? <Repeat aria-label="Repeats" className="size-3" /> : null}
+          <TaskMeta task={task} today={today} />
           {overlaps ? (
             <AlertTriangle
               aria-label="Overlaps another task"

@@ -30,6 +30,8 @@ function task(id: string, extra: Partial<Task> = {}): Task {
     recurrence: null,
     energy: null,
     alerts: null,
+    priority: null,
+    dueDate: null,
     ...extra,
   }
 }

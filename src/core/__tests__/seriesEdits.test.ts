@@ -41,6 +41,8 @@ function occurrence(
     isAllDay: false,
     energy: null,
     alerts: null,
+    priority: null,
+    dueDate: null,
     completedAt: null,
     inboxOrder: 0,
     createdAt: '2026-09-01T00:00:00Z',
@@ -69,6 +71,8 @@ function draftOf(task: Task, extra: Partial<TaskDraft> = {}): TaskDraft {
     isAllDay,
     energy,
     alerts,
+    priority,
+    dueDate,
   } = task
   return {
     title,
@@ -82,6 +86,8 @@ function draftOf(task: Task, extra: Partial<TaskDraft> = {}): TaskDraft {
     isAllDay,
     energy,
     alerts,
+    priority,
+    dueDate,
     ...extra,
   }
 }
@@ -139,6 +145,19 @@ describe('scopes', () => {
     expect(() => scopesFor({ ...occ, recurrence: null }, draftOf(occ), DAILY)).toThrow(
       /Not an occurrence/,
     )
+  })
+})
+
+describe('due date edits (code review)', () => {
+  it('reach the series row with "all", never the occurrences', () => {
+    const occ = occurrence('2026-10-05')
+    expect(planEdit(occ, draftOf(occ, { dueDate: '2026-12-01' }), DAILY, 'all', NEW_ID)).toEqual({
+      kind: 'series',
+      seriesId: SERIES,
+      patch: { dueDate: '2026-12-01' },
+      shared: {},
+      reset: false,
+    })
   })
 })
 

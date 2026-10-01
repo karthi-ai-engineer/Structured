@@ -82,6 +82,22 @@ export interface Task {
   energy: EnergyLevel | null
   /** Minutes before the start (0 = at the start, -1 = at the end); null: the settings' defaults. */
   alerts: number[] | null
+  /** 1 high, 2 medium, 3 low; null: none. */
+  priority: Priority | null
+  /** A deadline, separate from the day the task is planned on. */
+  dueDate: ISODate | null
+}
+
+export type Priority = 1 | 2 | 3
+
+export const PRIORITIES: readonly { value: Priority; label: string }[] = [
+  { value: 1, label: 'High' },
+  { value: 2, label: 'Medium' },
+  { value: 3, label: 'Low' },
+]
+
+export function toPriority(value: unknown): Priority | null {
+  return value === 1 || value === 2 || value === 3 ? value : null
 }
 
 /** The fields a user edits. */
@@ -98,6 +114,8 @@ export type TaskDraft = Pick<
   | 'isAllDay'
   | 'energy'
   | 'alerts'
+  | 'priority'
+  | 'dueDate'
 >
 
 export type TaskPatch = Partial<TaskDraft> & { completedAt?: string | null }
@@ -157,6 +175,7 @@ export function validateDraft(draft: TaskDraft): string[] {
   }
   if (draft.date !== null && !isISODate(draft.date)) problems.push('Date is invalid')
   if (draft.startTime !== null && !isTime(draft.startTime)) problems.push('Start time is invalid')
+  if (draft.dueDate !== null && !isISODate(draft.dueDate)) problems.push('Due date is invalid')
   if (draft.date !== null && !draft.isAllDay && draft.startTime === null) {
     problems.push('Pick a start time or turn on All day')
   }

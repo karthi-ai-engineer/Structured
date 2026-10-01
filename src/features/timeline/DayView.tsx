@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { CalendarDays, History, Plus, Repeat } from 'lucide-react'
 import { addDays, formatDateLabel, formatTime, isISODate, type ISODate } from '@/core/dates'
 import { windowOf } from '@/core/schedule'
-import { layoutDay, nextStartTime, taskProgress, type Task } from '@/core/tasks'
+import { layoutDay, nextStartTime, taskProgress, type Task, type TaskPatch } from '@/core/tasks'
 import { nowItemIndex, timelineItems } from '@/core/timeline'
 import { TaskIcon } from '@/components/TaskIcon'
 import { Button } from '@/components/ui/button'
@@ -61,7 +61,13 @@ export function DayView() {
       durationMin: Math.min(settings.defaultDuration, minutes),
     })
   const scheduleAt = (task: Task, start: string) =>
-    actions.update(task, { date: selected, startTime: start, isAllDay: false })
+    actions.update(task, { date: selected, startTime: start, isAllDay: false }, null, {
+      undo: `Scheduled "${task.title}"`,
+    })
+  const reschedule = (task: Task, patch: TaskPatch) =>
+    actions.update(task, patch, null, {
+      undo: patch.startTime ? `Moved "${task.title}"` : `Resized "${task.title}"`,
+    })
   const emptyDrop = useTaskDrop((task) => scheduleAt(task, defaultStart))
 
   useEffect(() => {
@@ -181,10 +187,11 @@ export function DayView() {
                     timeFormat={settings.timeFormat}
                     progress={taskProgress(item.task, today, nowMinutes)}
                     isLast={item.task === lastTask}
+                    today={today}
                     overlaps={item.overlaps}
                     onOpen={editor.openEdit}
                     onToggle={actions.toggleComplete}
-                    onReschedule={actions.update}
+                    onReschedule={reschedule}
                   />
                 ) : (
                   <GapRow

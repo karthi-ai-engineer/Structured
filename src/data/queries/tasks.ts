@@ -37,6 +37,17 @@ export function useOverdueTasks(today: ISODate) {
   })
 }
 
+/** Every task in the cache, once (for suggestions from history). */
+export function useCachedTasks(): Task[] {
+  const qc = useQueryClient()
+  const byId = new Map<string, Task>()
+  for (const [key, data] of qc.getQueriesData<Task[]>({ queryKey: taskKeys.all })) {
+    if (!listOfKey(key)) continue // search results hold series templates, not occurrences
+    for (const t of data ?? []) byId.set(t.id, t)
+  }
+  return [...byId.values()]
+}
+
 export function useInboxTasks() {
   return useQuery({ queryKey: taskKeys.inbox(), queryFn: () => tasks().listInbox() })
 }
@@ -254,20 +265,82 @@ export function useTaskActions() {
   const saveOccurrence = (task: Task, patch: TaskPatch) =>
     series.mutate({ kind: 'occurrence', task: applyPatch(task, patch) })
 
+  const restore = useMutation({
+    mutationKey: taskMutationKey,
+    mutationFn: (task: Task) => tasks().restore(task.id),
+    onMutate: async (task) => {
+      await hold()
+      writeTaskToCache(qc, task.id, task)
+    },
+    onError: (_error, task) => {
+      writeTaskToCache(qc, task.id, null)
+      notify('Could not bring the task back.')
+    },
+    onSettled: settle,
+  })
+
+  /** The task as the cache has it now (an undo must not overwrite later changes). */
+  const latest = (id: string, fallback: Task): Task => {
+    for (const [key, data] of qc.getQueriesData<Task[]>({ queryKey: taskKeys.all })) {
+      if (!listOfKey(key)) continue
+      const found = data?.find((t) => t.id === id)
+      if (found) return found
+    }
+    return fallback
+  }
+
+  /** The previous values of the fields a patch changes (to undo it). */
+  const before = (task: Task, patch: TaskPatch): TaskPatch =>
+    Object.fromEntries(Object.keys(patch).map((k) => [k, task[k as keyof TaskPatch]]))
+
+  /** A one-off task, or one occurrence ("this task only"). */
+  const change = (task: Task, patch: TaskPatch, repeat: RepeatSpec | null) => {
+    if (task.recurrence) saveOccurrence(task, patch)
+    else update.mutate({ task, patch, repeat })
+  }
+
   return {
     create: (id: string, draft: TaskDraft, repeat: RepeatSpec | null = null) =>
       create.mutate({ id, draft, repeat }),
-    /** A one-off task (`repeat` turns it into a series), or one occurrence of a series. */
-    update: (task: Task, patch: TaskPatch, repeat: RepeatSpec | null = null) =>
-      task.recurrence ? saveOccurrence(task, patch) : update.mutate({ task, patch, repeat }),
-    remove: (task: Task) =>
-      task.recurrence ? series.mutate({ kind: 'cancel', task }) : remove.mutate(task),
+    /**
+     * A one-off task (`repeat` turns it into a series), or one occurrence of a series. With
+     * `undo`, a notice offers to put the old values back (moves: drag, Replan, scheduling).
+     */
+    update: (
+      task: Task,
+      patch: TaskPatch,
+      repeat: RepeatSpec | null = null,
+      options: { undo?: string } = {},
+    ) => {
+      change(task, patch, repeat)
+      if (options.undo) {
+        const back = before(task, patch)
+        notify(options.undo, {
+          label: 'Undo',
+          run: () => change(latest(task.id, applyPatch(task, patch)), back, null),
+        })
+      }
+    },
+    remove: (task: Task) => {
+      if (task.recurrence) series.mutate({ kind: 'cancel', task })
+      else remove.mutate(task)
+      notify(`Deleted "${task.title}"`, {
+        label: 'Undo',
+        run: () =>
+          task.recurrence ? series.mutate({ kind: 'occurrence', task }) : restore.mutate(task),
+      })
+    },
     /** An edit or delete of a recurring occurrence, planned by src/core/seriesEdits.ts. */
     applySeries: (write: SeriesWrite) => series.mutate(write),
     toggleComplete: (task: Task) => {
       const patch = { completedAt: task.completedAt ? null : nowIso() }
-      if (task.recurrence) saveOccurrence(task, patch)
-      else update.mutate({ task, patch, repeat: null })
+      change(task, patch, null)
+      if (patch.completedAt) {
+        notify(`Done: "${task.title}"`, {
+          label: 'Undo',
+          run: () => change(latest(task.id, { ...task, ...patch }), { completedAt: null }, null),
+        })
+      }
     },
   }
 }

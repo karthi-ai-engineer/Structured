@@ -199,3 +199,47 @@
 - **A 0-minute task with alerts at both its start and end:** it now says "starts now" (the start wins the shared minute).
 - **Accepted:** after a pause, logged segment start times shift by the pause; the lengths stay right.
 
+## WP5: Quick add, suggestions, search, undo, duplicate, priority and due date (2026-10-01)
+
+### What was done
+- **Quick add (T15):** `src/core/quickadd.ts` is a small deterministic parser (no new dependency).
+  - Dates: today, tomorrow, weekdays, "next friday", "in 3 days", "oct 5", ISO dates.
+  - Times: 7am, 19:00, "at 7", noon. Durations: 45m, 1h30, 1.5h.
+  - Priority `!high`/`!1` and energy `~2`.
+  - The editor shows what it recognised as chips and applies it on blur and on save. The inbox quick add uses it too, and says where the task went.
+- **Suggestions (T16):** `src/core/suggest.ts`, a keyword map of about 40 groups onto the app's icons and colors; the latest task with the same title wins.
+- **Search (T17):** `/search`, also in the sidebar and tabs, over titles and notes. Repeating series show their next occurrence. The pattern escaping (`src/core/search.ts`) is shared with the MCP server.
+- **Undo snackbar (T19):** for delete (`restore` brings back a soft delete, and a cancelled occurrence gets its override back), completion, and moves (drag, resize, Replan, scheduling from the inbox).
+- **Duplicate (T22):** the copy opens in the editor right away, so it can go to another day.
+- **Priority and due date (T20):**
+  - Editor chips and a due date; a flag and a "Due …" badge (red when overdue) on the timeline, week and inbox.
+  - MCP `priority`/`due_date` on create and update (undoable).
+  - `0008` makes series carry priority.
+
+### Commands run
+- `npm run db:push` (0008), `npm run verify` (991 tests), `npm run test:integration` (15), `npm run test:e2e` (16)
+
+### Deviations and fixes found on the way
+- **The Phase 2 MCP live test** expected a day's schedule to hold only its own tasks. Since WP1, the seeded daily defaults show on every day, so it now looks at `__test__` tasks only. It was broken from WP1 until now: the suite is opt-in and was not rerun after WP1.
+- **e2e:** `getByLabel('Date')` also matched the new "Due date" field; the e2e tests now match it exactly.
+
+### Code review, round 1 (PR #32): changes requested; 2 major and 7 minor findings, all fixed
+- **Major: short weekday names rewrote ordinary titles** ("Sun salutation", "SAT prep").
+  - Short names count only after "on", "next" or "this"; full names always do.
+  - "Double quotes" keep words as typed.
+  - "on" is dropped only when a date follows.
+- **Major: a due-date change on a repeating task with "All" was dropped.** It now reaches the series row (occurrences keep their own).
+- **Minor fixes:**
+  - undo applies to the task's current values, so a later change survives
+  - "at 1" to "at 7" mean the afternoon; a bare "m" stops at 90 ("Run 100m" stays a title)
+  - search falls back to an ended series' last occurrence
+  - search results live under the task keys, so edits refresh them
+  - Duplicate opens a new, prefilled task with the saved values (no early insert, no lost edits)
+  - a series' due date never marks later occurrences overdue
+
+### Code review, round 2: approved; 3 of its 4 new minors fixed before merge
+- **"this", "on" and "next"** are consumed only before a weekday ("Review this tomorrow" keeps "this").
+- **A duplicate** (a prefilled new task) is not re-parsed.
+- **Undo and suggestions** read only real task lists; search results hold series templates.
+- **Accepted:** "Dinner at 8" means 08:00. Only "at 1" to "at 7" mean the afternoon; write 8pm.
+

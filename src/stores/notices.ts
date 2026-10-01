@@ -1,9 +1,16 @@
 // A tiny store for short, dismissable messages ("Could not save..."). Framework-free, read by
 // the <Notices /> component through useSyncExternalStore.
 
+export interface NoticeAction {
+  label: string
+  run: () => void
+}
+
 export interface Notice {
   id: number
   message: string
+  /** An optional button, such as Undo (PLAN.md T19). */
+  action?: NoticeAction
 }
 
 type Listener = () => void
@@ -22,11 +29,12 @@ export function dismiss(id: number): void {
   emit()
 }
 
-export function notify(message: string): void {
+export function notify(message: string, action?: NoticeAction): void {
   const id = nextId++
-  notices = [...notices.slice(-2), { id, message }]
+  notices = [...notices.slice(-2), action ? { id, message, action } : { id, message }]
   emit()
-  setTimeout(() => dismiss(id), AUTO_DISMISS_MS)
+  // Notices with an action stay a little longer, so there is time to use it.
+  setTimeout(() => dismiss(id), action ? AUTO_DISMISS_MS * 1.5 : AUTO_DISMISS_MS)
 }
 
 export function subscribe(listener: Listener): () => void {

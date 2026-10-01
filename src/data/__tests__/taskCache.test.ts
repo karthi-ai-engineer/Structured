@@ -28,6 +28,8 @@ function task(overrides: Partial<Task>): Task {
         isAllDay: false,
         energy: null,
         alerts: null,
+        priority: null,
+        dueDate: null,
       },
       NOW,
     ),

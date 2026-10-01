@@ -1,5 +1,11 @@
 import { NavLink, Outlet, useLocation } from 'react-router'
-import { CalendarDays, Inbox, Settings as SettingsIcon, type LucideIcon } from 'lucide-react'
+import {
+  CalendarDays,
+  Inbox,
+  Search,
+  Settings as SettingsIcon,
+  type LucideIcon,
+} from 'lucide-react'
 import { InboxList } from '@/features/inbox/InboxList'
 import { RouteErrorBoundary } from '@/features/shell/RouteErrorBoundary'
 import { cn } from '@/lib/utils'
@@ -7,6 +13,7 @@ import { cn } from '@/lib/utils'
 const NAV: readonly { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
   { to: '/', label: 'Timeline', icon: CalendarDays },
   { to: '/inbox', label: 'Inbox', icon: Inbox },
+  { to: '/search', label: 'Search', icon: Search },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ]
 
@@ -66,7 +73,7 @@ export function AppShell() {
 
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-3 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
       >
         {NAV.map(({ to, label, icon: Icon }) => (
           <NavLink

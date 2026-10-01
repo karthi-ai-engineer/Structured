@@ -14,6 +14,7 @@ import { WeekView } from '@/features/calendar/WeekView'
 import { useAlertScheduler } from '@/features/alerts/useAlertScheduler'
 import { EditorProvider } from '@/features/editor/EditorProvider'
 import { FocusView } from '@/features/focus/FocusView'
+import { SearchView } from '@/features/search/SearchView'
 import { InboxView } from '@/features/inbox/InboxView'
 import { SettingsView } from '@/features/settings/SettingsView'
 import { ThemeSync } from '@/features/settings/ThemeSync'
@@ -55,6 +56,7 @@ export function AppRoutes() {
           <Route path="month/:month" element={<MonthView />} />
           <Route path="replan" element={<ReplanView />} />
           <Route path="focus/:id" element={<FocusView />} />
+          <Route path="search" element={<SearchView />} />
           <Route path="inbox" element={<InboxView />} />
           <Route path="settings" element={<SettingsView />} />
           <Route path="*" element={<Navigate to="/" replace />} />
