@@ -1,13 +1,15 @@
 // An in-memory TaskStore for unit tests: same contract as the Supabase store.
 import type { ISODate } from '../../src/core/dates.ts'
 import type { Task } from '../../src/core/tasks.ts'
-import type {
-  Batch,
-  NewTask,
-  SearchOptions,
-  StoreSettings,
-  TaskChanges,
-  TaskStore,
+import {
+  ROW_NOT_FOUND,
+  StoreError,
+  type Batch,
+  type NewTask,
+  type SearchOptions,
+  type StoreSettings,
+  type TaskChanges,
+  type TaskStore,
 } from '../store.ts'
 
 interface Row extends Task {
@@ -131,6 +133,8 @@ export class MemoryStore implements TaskStore {
   }
 
   async updateMany(ids: readonly string[], changes: TaskChanges, batchId: string): Promise<Task[]> {
+    // One statement in the real store: it fails as a whole, before any row changes.
+    if (this.updateFailures.shift() === true) throw new StoreError('http-503')
     const out: Task[] = []
     for (const id of ids) out.push(await this.update(id, changes, batchId))
     return out
@@ -164,9 +168,16 @@ export class MemoryStore implements TaskStore {
     )
   }
 
+  /**
+   * Failure injection for partial-write tests: each update (or updateMany) takes the next entry;
+   * `true` makes it fail with a transient store error, as a dropped request would.
+   */
+  updateFailures: boolean[] = []
+
   update(id: string, changes: TaskChanges, batchId: string | null): Promise<Task> {
+    if (this.updateFailures.shift() === true) return Promise.reject(new StoreError('http-503'))
     const row = this.rows.get(id)
-    if (!row) return Promise.reject(new Error(`no row ${id}`))
+    if (!row) return Promise.reject(new StoreError(ROW_NOT_FOUND))
     const { deletedAt, ...rest } = changes
     Object.assign(row, rest)
     if (deletedAt !== undefined) row.deletedAt = deletedAt

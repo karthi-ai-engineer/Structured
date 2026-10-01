@@ -3,6 +3,7 @@
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createEntry, secretFromUrl, secretMatches } from '../mcp/entry.ts'
+import { searchPattern } from '../store.ts'
 import { MemoryStore } from './memoryStore.ts'
 
 const SECRET = 'test-secret-0123456789-abcdefghijklmnop'
@@ -322,5 +323,163 @@ describe('entry (secret path)', () => {
     expect(secretMatches('abc', 'abc')).toBe(true)
     expect(secretMatches('abd', 'abc')).toBe(false)
     expect(secretMatches('', 'abc')).toBe(false)
+  })
+})
+
+// Round-1 code review of PR #18: each test reproduces a reviewer scenario.
+describe('review fixes', () => {
+  const created = async (tasks: Record<string, unknown>[]) => {
+    const r = await call('create_tasks', { tasks })
+    expect(r.isError).toBe(false)
+    return {
+      batchId: r.data.batch_id as string,
+      ids: (r.data.tasks as { id: string }[]).map((t) => t.id),
+    }
+  }
+  const row = (id: string) => {
+    const r = store.rows.get(id)
+    if (!r) throw new Error(`no row ${id}`)
+    return r
+  }
+
+  it('undo keeps tasks the user changed since, until forced', async () => {
+    const { batchId, ids } = await created([
+      { title: 'A', date: '2099-03-11', start_time: '09:00' },
+      { title: 'B', date: '2099-03-11', start_time: '11:00' },
+    ])
+    const [a = '', b = ''] = ids
+    row(a).completedAt = '2099-03-11T10:00:00.000Z' // the user ticked A in the app
+
+    const first = await call('undo_batch', { batch_id: batchId })
+    expect(first.isError).toBe(false)
+    expect(first.data.skipped).toEqual([{ id: a, title: 'A' }])
+    expect(row(a).deletedAt).toBeNull()
+    expect(row(b).deletedAt).not.toBeNull()
+    expect(store.batches.get(batchId)?.undoneAt).toBeNull() // a retry stays possible
+
+    const forced = await call('undo_batch', { batch_id: batchId, force: true })
+    expect(forced.summary).toMatch(/^Undid "Created 2 tasks"/)
+    expect(row(a).deletedAt).not.toBeNull()
+    expect(store.batches.get(batchId)?.undoneAt).not.toBeNull()
+  })
+
+  it('undo of an edit leaves a later user move alone, until forced', async () => {
+    const r = await call('update_task', { id: uuid(901), start_time: '12:00' })
+    row(uuid(901)).startTime = '15:00' // moved again in the app
+    const undo = await call('undo_batch', { batch_id: r.data.batch_id })
+    expect(undo.data.skipped).toHaveLength(1)
+    expect(row(uuid(901)).startTime).toBe('15:00')
+    await call('undo_batch', { batch_id: r.data.batch_id, force: true })
+    expect(row(uuid(901)).startTime).toBe('10:00')
+  })
+
+  it('a partly failed undo is reported and can be retried', async () => {
+    const del = await call('delete_tasks', { ids: [uuid(901), uuid(902)] })
+    store.updateFailures = [true] // the first revert request is dropped
+    const partial = await call('undo_batch', { batch_id: del.data.batch_id })
+    expect(partial.isError).toBe(true)
+    expect(partial.summary).toMatch(/^Undo incomplete: 1 change could not be reverted/)
+    expect(partial.data.failed).toHaveLength(1)
+    expect(store.batches.get(del.data.batch_id)?.undoneAt).toBeNull()
+
+    const retry = await call('undo_batch', { batch_id: del.data.batch_id })
+    expect(retry.isError).toBe(false)
+    expect(row(uuid(901)).deletedAt).toBeNull()
+    expect(row(uuid(902)).deletedAt).toBeNull()
+  })
+
+  it('undo of add_subtasks removes only the added items, keeping the user items', async () => {
+    const r = await call('add_subtasks', { task_id: uuid(901), titles: ['Notes', 'Blockers'] })
+    const target = row(uuid(901))
+    const [notes, blockers] = target.subtasks
+    if (!notes || !blockers) throw new Error('subtasks missing')
+    target.subtasks = [
+      { ...notes, done: true },
+      blockers,
+      { id: 'own', title: 'Mine', done: false },
+    ]
+    await call('undo_batch', { batch_id: r.data.batch_id })
+    expect(row(uuid(901)).subtasks).toEqual([{ id: 'own', title: 'Mine', done: false }])
+  })
+
+  it('a failure midway through move_tasks returns the batch to undo the moved part', async () => {
+    store.updateFailures = [false, true]
+    const r = await call('move_tasks', {
+      moves: [
+        { id: uuid(901), date: '2099-03-12', start_time: '09:00' },
+        { id: uuid(903), date: '2099-03-12', start_time: '11:00' },
+      ],
+    })
+    expect(r.isError).toBe(true)
+    expect(r.summary).toMatch(/^Moved 1 of 2 tasks/)
+    expect(row(uuid(901)).date).toBe('2099-03-12')
+    await call('undo_batch', { batch_id: r.data.batch_id })
+    expect(row(uuid(901))).toMatchObject({ date: '2099-03-10', startTime: '10:00' })
+  })
+
+  it('completing many tasks is all or nothing', async () => {
+    store.updateFailures = [true]
+    const r = await call('set_completion', { ids: [uuid(901), uuid(903)], done: true })
+    expect(r.isError).toBe(true)
+    expect(row(uuid(901)).completedAt).toBeNull()
+    expect(row(uuid(903)).completedAt).toBeNull()
+  })
+
+  it('a start time makes an all-day task timed; without a date it is an error', async () => {
+    store.seed({ id: uuid(904), title: 'Holiday', date: '2099-03-11', isAllDay: true })
+    const moved = await call('move_tasks', {
+      moves: [{ id: uuid(904), date: '2099-03-12', start_time: '10:00' }],
+    })
+    expect(moved.data.tasks[0]).toMatchObject({ start: '10:00', date: '2099-03-12' })
+    expect(moved.data.tasks[0].all_day).toBeUndefined()
+
+    store.seed({ id: uuid(905), title: 'Holiday 2', date: '2099-03-11', isAllDay: true })
+    const updated = await call('update_task', { id: uuid(905), start_time: '08:00' })
+    expect(updated.data.task).toMatchObject({ start: '08:00' })
+
+    const inbox = await call('update_task', { id: uuid(902), start_time: '08:00' })
+    expect(inbox.isError).toBe(true)
+    expect(inbox.data.problems).toContain('Give a date to set a start time or all-day')
+    const create = await call('create_tasks', {
+      tasks: [{ title: 'No date', start_time: '08:00' }],
+    })
+    expect(create.data.problems[0].problems).toContain('Give a date to set a start time')
+  })
+
+  it('update_task refuses an unknown icon instead of clearing the current one', async () => {
+    row(uuid(901)).icon = 'dumbbell'
+    const r = await call('update_task', { id: uuid(901), icon: 'rocket' })
+    expect(r.isError).toBe(true)
+    expect(r.data.icons).toContain('laptop')
+    expect(row(uuid(901)).icon).toBe('dumbbell')
+  })
+
+  it('unknown ids are errors or listed, never silent', async () => {
+    const none = await call('set_completion', { ids: [uuid(999)], done: true })
+    expect(none.isError).toBe(true)
+    expect(none.data.missing).toEqual([uuid(999)])
+    const some = await call('delete_tasks', { ids: [uuid(902), uuid(998)] })
+    expect(some.data.missing).toEqual([uuid(998)])
+  })
+
+  it('flags a task that ends after midnight', async () => {
+    const r = await call('create_tasks', {
+      tasks: [{ title: 'Late', date: '2099-03-12', start_time: '23:30', duration_min: 60 }],
+    })
+    expect(r.data.tasks[0]).toMatchObject({ start: '23:30', end: '00:30', ends_next_day: true })
+  })
+
+  it('get_context and list_overdue look back the same number of days', async () => {
+    store.seed({ id: uuid(906), title: 'Ancient', date: '2099-02-10', startTime: '09:00' })
+    const context = await call('get_context')
+    expect(context.data).toMatchObject({ overdue_count: 1, overdue_window_days: 14 })
+    expect((await call('list_overdue')).data.tasks).toHaveLength(1)
+  })
+
+  it('search never matches everything', () => {
+    expect(searchPattern('*')).toBeNull()
+    expect(searchPattern('(),"')).toBeNull()
+    expect(searchPattern('  lunch * ')).toBe('%lunch%')
+    expect(searchPattern('50%_off')).toBe('%50\\%\\_off%')
   })
 })
