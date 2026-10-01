@@ -9,9 +9,10 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json, TablesUpdate } from '../src/data/database.types.ts'
 import { isValidTimeZone, type ISODate } from '../src/core/dates.ts'
 import { taskFromRow, toStartTime } from '../src/core/rows.ts'
+import { searchPattern } from '../src/core/search.ts'
 import { expandSeriesRows, missingSeriesIds } from '../src/core/series.ts'
 import type { EnergyLevel } from '../src/core/energy.ts'
-import type { Subtask, Task, TaskColor } from '../src/core/tasks.ts'
+import type { Priority, Subtask, Task, TaskColor } from '../src/core/tasks.ts'
 
 export type AdminDb = SupabaseClient<Database>
 
@@ -46,6 +47,8 @@ export interface NewTask {
   energy: EnergyLevel | null
   /** Alerts are set in the app only; Claude's tasks use the user's defaults. */
   alerts: null
+  priority: Priority | null
+  dueDate: ISODate | null
 }
 
 /** Column changes, in domain terms. `deletedAt` soft-deletes (a timestamp) or restores (null). */
@@ -60,6 +63,8 @@ export interface TaskChanges {
   durationMin?: number
   isAllDay?: boolean
   energy?: EnergyLevel | null
+  priority?: Priority | null
+  dueDate?: ISODate | null
   completedAt?: string | null
   deletedAt?: string | null
 }
@@ -147,23 +152,15 @@ function toUpdate(changes: TaskChanges, batchId: string | null): TablesUpdate<'t
   if (changes.durationMin !== undefined) u.duration_min = changes.durationMin
   if (changes.isAllDay !== undefined) u.is_all_day = changes.isAllDay
   if (changes.energy !== undefined) u.energy = changes.energy
+  if (changes.priority !== undefined) u.priority = changes.priority
+  if (changes.dueDate !== undefined) u.due_date = changes.dueDate
   if (changes.completedAt !== undefined) u.completed_at = changes.completedAt
   if (changes.deletedAt !== undefined) u.deleted_at = changes.deletedAt
   if (batchId !== null) u.batch_id = batchId
   return u
 }
 
-/** The `ilike` pattern for a search, or null when nothing searchable is left. PostgREST `or`
- *  syntax characters are removed, `*` (PostgREST's wildcard) too, and LIKE wildcards are
- *  escaped, so the query always matches literally. */
-export function searchPattern(query: string): string | null {
-  const clean = query
-    .replace(/[,()"*]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-  if (clean === '') return null
-  return `%${clean.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
-}
+export { searchPattern } from '../src/core/search.ts'
 
 export function createSupabaseStore(db: AdminDb): TaskStore {
   const plain = () => db.from('tasks').select('*').is('repeat_rule', null).is('series_id', null)
@@ -296,6 +293,8 @@ export function createSupabaseStore(db: AdminDb): TaskStore {
         duration_min: t.durationMin,
         is_all_day: t.isAllDay,
         energy: t.energy,
+        priority: t.priority,
+        due_date: t.dueDate,
         source: 'mcp',
         batch_id: batchId,
       }))

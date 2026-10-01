@@ -74,6 +74,8 @@ const taskId = z.string().superRefine((id, ctx) => {
   })
 })
 const color = z.enum(COLOR_NAMES)
+const PRIORITY_VALUES = { high: 1, medium: 2, low: 3 } as const
+const priority = z.enum(['high', 'medium', 'low'])
 const energy = z
   .number()
   .int()
@@ -384,6 +386,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
     notes: z.string().max(5000).optional(),
     subtasks: z.array(title).max(50).optional(),
     energy: energy.optional(),
+    priority: priority.optional(),
+    due_date: isoDate.optional().describe('A deadline, separate from the planned date'),
   })
 
   server.registerTool(
@@ -421,6 +425,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
             isAllDay,
             energy: toEnergyLevel(t.energy),
             alerts: null,
+            priority: t.priority ? PRIORITY_VALUES[t.priority] : null,
+            dueDate: t.due_date ?? null,
           }
           const problems = validateDraft(task)
           if (date === null && t.start_time !== undefined) {
@@ -560,6 +566,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         duration_min: duration.optional(),
         all_day: z.boolean().optional(),
         energy: energy.nullable().optional(),
+        priority: priority.nullable().optional(),
+        due_date: isoDate.nullable().optional(),
       }),
     },
     (input) =>
@@ -584,6 +592,10 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         if (input.duration_min !== undefined) patch.durationMin = input.duration_min
         if (input.all_day !== undefined) patch.isAllDay = input.all_day
         if (input.energy !== undefined) patch.energy = toEnergyLevel(input.energy)
+        if (input.priority !== undefined) {
+          patch.priority = input.priority ? PRIORITY_VALUES[input.priority] : null
+        }
+        if (input.due_date !== undefined) patch.dueDate = input.due_date
         if (Object.keys(patch).length === 0) return fail('Pass at least one field to change.')
         const { merged, changes, problems } = scheduleChanges(task, patch)
         if (problems.length > 0) return fail('Nothing was changed.', { problems })
@@ -889,6 +901,8 @@ const FIELDS = [
   'durationMin',
   'isAllDay',
   'energy',
+  'priority',
+  'dueDate',
   'completedAt',
 ] as const
 type Field = (typeof FIELDS)[number]

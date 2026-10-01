@@ -51,6 +51,8 @@ export class MemoryStore implements TaskStore {
       recurrence: null,
       energy: null,
       alerts: null,
+      priority: null,
+      dueDate: null,
       deletedAt: null,
       batchId: null,
       source: 'app',
@@ -83,6 +85,8 @@ export class MemoryStore implements TaskStore {
       recurrence: r.recurrence,
       energy: r.energy,
       alerts: r.alerts ? [...r.alerts] : null,
+      priority: r.priority,
+      dueDate: r.dueDate,
     }
   }
 

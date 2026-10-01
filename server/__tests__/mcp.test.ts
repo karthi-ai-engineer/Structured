@@ -593,3 +593,26 @@ describe('energy monitor', () => {
     expect(day.data.days[0].energy).toBeUndefined()
   })
 })
+
+describe('priority and due date', () => {
+  it('creates, shows, changes and undoes them', async () => {
+    const r = await call('create_tasks', {
+      tasks: [
+        {
+          title: 'Report',
+          date: '2099-03-12',
+          start_time: '15:00',
+          priority: 'high',
+          due_date: '2099-03-14',
+        },
+      ],
+    })
+    expect(r.data.tasks[0]).toMatchObject({ priority: 'high', due_date: '2099-03-14' })
+    const id = r.data.tasks[0].id
+    const u = await call('update_task', { id, priority: null, due_date: '2099-03-20' })
+    expect(u.data.task.priority).toBeUndefined()
+    expect(u.data.task.due_date).toBe('2099-03-20')
+    await call('undo_batch', { batch_id: u.data.batch_id })
+    expect(store.rows.get(id)).toMatchObject({ priority: 1, dueDate: '2099-03-14' })
+  })
+})
