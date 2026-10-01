@@ -21,7 +21,7 @@ async function addTask(page: Page, title: string, date: string, start: string) {
   await page.getByRole('button', { name: 'New task' }).first().click()
   const dialog = page.getByRole('dialog')
   await dialog.getByLabel('Title').fill(title)
-  await dialog.getByLabel('Date').fill(date)
+  await dialog.getByLabel('Date', { exact: true }).fill(date)
   await dialog.getByLabel('Start').fill(start)
   const created = saved(page, title)
   await dialog.getByRole('button', { name: 'Add task' }).click()

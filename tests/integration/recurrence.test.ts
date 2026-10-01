@@ -42,6 +42,8 @@ function draftOf(task: Task, extra: Partial<TaskDraft> = {}): TaskDraft {
     isAllDay,
     energy,
     alerts,
+    priority,
+    dueDate,
   } = task
   return {
     title,
@@ -55,6 +57,8 @@ function draftOf(task: Task, extra: Partial<TaskDraft> = {}): TaskDraft {
     isAllDay,
     energy,
     alerts,
+    priority,
+    dueDate,
     ...extra,
   }
 }
@@ -93,6 +97,8 @@ describe('recurring tasks (real project)', () => {
         isAllDay: false,
         energy: null,
         alerts: null,
+        priority: null,
+        dueDate: null,
       },
       DAILY,
     )
@@ -230,6 +236,8 @@ describe('recurring tasks (real project)', () => {
         isAllDay: false,
         energy: null,
         alerts: null,
+        priority: null,
+        dueDate: null,
       },
       { rule: mondays, until: null },
     )
@@ -286,6 +294,8 @@ describe('recurring tasks (real project)', () => {
         isAllDay: false,
         energy: null,
         alerts: null,
+        priority: null,
+        dueDate: null,
       },
       spec,
     )
