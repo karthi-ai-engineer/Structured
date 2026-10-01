@@ -38,6 +38,8 @@ function draft(overrides: Partial<TaskDraft> = {}): TaskDraft {
     startTime: '09:30',
     durationMin: 45,
     isAllDay: false,
+    energy: null,
+    alerts: null,
     ...overrides,
   }
 }

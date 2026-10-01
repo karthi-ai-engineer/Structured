@@ -30,8 +30,33 @@ function env(name: string): string {
 }
 
 function draftOf(task: Task, extra: Partial<TaskDraft> = {}): TaskDraft {
-  const { title, notes, icon, color, subtasks, date, startTime, durationMin, isAllDay } = task
-  return { title, notes, icon, color, subtasks, date, startTime, durationMin, isAllDay, ...extra }
+  const {
+    title,
+    notes,
+    icon,
+    color,
+    subtasks,
+    date,
+    startTime,
+    durationMin,
+    isAllDay,
+    energy,
+    alerts,
+  } = task
+  return {
+    title,
+    notes,
+    icon,
+    color,
+    subtasks,
+    date,
+    startTime,
+    durationMin,
+    isAllDay,
+    energy,
+    alerts,
+    ...extra,
+  }
 }
 
 beforeAll(() => {
@@ -66,6 +91,8 @@ describe('recurring tasks (real project)', () => {
         startTime: '07:00',
         durationMin: 30,
         isAllDay: false,
+        energy: null,
+        alerts: null,
       },
       DAILY,
     )
@@ -201,6 +228,8 @@ describe('recurring tasks (real project)', () => {
         startTime: '18:00',
         durationMin: 45,
         isAllDay: false,
+        energy: null,
+        alerts: null,
       },
       { rule: mondays, until: null },
     )
@@ -255,6 +284,8 @@ describe('recurring tasks (real project)', () => {
         startTime: '09:00',
         durationMin: 30,
         isAllDay: false,
+        energy: null,
+        alerts: null,
       },
       spec,
     )
