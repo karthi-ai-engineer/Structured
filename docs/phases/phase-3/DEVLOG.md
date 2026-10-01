@@ -291,3 +291,8 @@
   - the palette highlight is always clamped to the list
   - Escape that closes the palette over focus mode no longer leaves focus mode
 
+### Code review, round 2: approved; its 3 new minors fixed before merge
+- **After a failed load, the editor gets a fresh `lazy()` component,** so the next opening tries again (`lazy` remembers failures).
+- **A cache-first hit is written again,** so a file that every build keeps stays among the newest and is never trimmed.
+- **The background refresh of the app shell is kept alive with `waitUntil`** when the cached shell answers first.
+

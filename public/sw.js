@@ -41,7 +41,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin === self.location.origin) {
     if (url.pathname.startsWith('/api/')) return
     if (request.mode === 'navigate') {
-      event.respondWith(navigate(request))
+      event.respondWith(navigate(request, event))
     } else if (url.pathname.startsWith('/assets/')) {
       event.respondWith(cacheFirst(request, SHELL))
     } else {
@@ -55,7 +55,12 @@ self.addEventListener('fetch', (event) => {
 async function cacheFirst(request, cacheName) {
   const cache = await caches.open(cacheName)
   const hit = await cache.match(request)
-  if (hit) return hit
+  if (hit) {
+    // Written again, so a file every build still uses stays among the newest (the trim drops
+    // the least recently written).
+    await cache.put(request, hit.clone())
+    return hit
+  }
   const response = await fetch(request)
   if (response.ok) {
     await cache.put(request, response.clone())
@@ -64,9 +69,11 @@ async function cacheFirst(request, cacheName) {
   return response
 }
 
-/** A page load: the network if it answers in time, else the cached app shell. */
-async function navigate(request) {
+/** A page load: the network if it answers in time, else the cached app shell. The network
+ *  request keeps running (waitUntil) so the cached shell is still refreshed. */
+async function navigate(request, event) {
   const network = networkFirst(request, SHELL, '/index.html')
+  event.waitUntil(network.catch(() => undefined))
   const cache = await caches.open(SHELL)
   const shell = await cache.match('/index.html')
   if (!shell) return network

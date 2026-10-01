@@ -1,7 +1,7 @@
 import { Suspense, useState, type ReactNode } from 'react'
 import { EditorBoundary } from '@/features/editor/EditorBoundary'
 import { EditorContext, type EditorApi, type EditorRequest } from '@/features/editor/editorContext'
-import { TaskEditor } from '@/features/shell/screens'
+import { createLazyEditor } from '@/features/shell/screens'
 import { notify } from '@/stores/notices'
 
 /** Hosts the single task editor dialog and lets any screen open it. */
@@ -9,6 +9,7 @@ export function EditorProvider({ children }: { children: ReactNode }) {
   const [request, setRequest] = useState<EditorRequest | null>(null)
   // A new key per opening resets the form state inside the editor.
   const [openCount, setOpenCount] = useState(0)
+  const [TaskEditor, setTaskEditor] = useState(createLazyEditor)
 
   const api: EditorApi = {
     openCreate: (defaults) => {
@@ -30,6 +31,7 @@ export function EditorProvider({ children }: { children: ReactNode }) {
           key={openCount}
           onError={() => {
             setRequest(null)
+            setTaskEditor(createLazyEditor) // the next opening loads it again
             notify('Could not open the editor. Check the connection and try again.')
           }}
         >

@@ -17,7 +17,11 @@ export const MonthView = lazy(() => loaders.month().then((m) => ({ default: m.Mo
 export const ReplanView = lazy(() => loaders.replan().then((m) => ({ default: m.ReplanView })))
 export const FocusView = lazy(() => loaders.focus().then((m) => ({ default: m.FocusView })))
 export const SearchView = lazy(() => loaders.search().then((m) => ({ default: m.SearchView })))
-export const TaskEditor = lazy(() => loaders.editor().then((m) => ({ default: m.TaskEditor })))
+/** A fresh lazy editor: `lazy()` remembers a failed load, so after a failure the provider makes
+ *  a new one and the next opening tries again. */
+export function createLazyEditor() {
+  return lazy(() => loaders.editor().then((m) => ({ default: m.TaskEditor })))
+}
 
 /** Fetches every on-demand screen a few seconds after start (failures are ignored: the screen
  *  simply loads when opened). */
