@@ -268,6 +268,45 @@ describe('planEdit: this and future', () => {
     })
   })
 
+  it('continued from a short month, a monthly series keeps its day (the 31st)', () => {
+    const monthly = rule('FREQ=MONTHLY')
+    const feb = occurrence('2026-02-28', {}, { rule: monthly, start: '2026-01-31' })
+    const plan = planEdit(
+      feb,
+      draftOf(feb, { title: 'Rent' }),
+      { rule: monthly, until: null },
+      'future',
+      NEW_ID,
+    )
+    expect(plan).toMatchObject({
+      kind: 'split',
+      from: '2026-02-28',
+      next: { draft: { date: '2026-02-28' }, repeat: { rule: { freq: 'monthly', monthDay: 31 } } },
+    })
+    // A yearly series from Feb 29, edited in a common year, keeps the 29th.
+    const yearly = rule('FREQ=YEARLY')
+    const bday = occurrence('2029-02-28', {}, { rule: yearly, start: '2028-02-29' })
+    expect(
+      planEdit(
+        bday,
+        draftOf(bday, { title: 'Party' }),
+        { rule: yearly, until: null },
+        'future',
+        NEW_ID,
+      ),
+    ).toMatchObject({ next: { repeat: { rule: { monthDay: 29 } } } })
+    // No clamping, no extra day: the rule stays as it was.
+    const mid = occurrence('2026-03-15', {}, { rule: monthly, start: '2026-01-15' })
+    const midPlan = planEdit(
+      mid,
+      draftOf(mid, { title: 'X' }),
+      { rule: monthly, until: null },
+      'future',
+      NEW_ID,
+    )
+    expect(midPlan.kind === 'split' && midPlan.next?.repeat?.rule).toEqual(monthly)
+  })
+
   it('a new rule starts at this occurrence (monthly "on the 15th" from Oct 15)', () => {
     const occ = occurrence('2026-10-15')
     const monthly = { rule: rule('FREQ=MONTHLY'), until: null }

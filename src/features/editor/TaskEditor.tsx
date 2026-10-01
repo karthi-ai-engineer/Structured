@@ -113,7 +113,7 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
         !changes.rule &&
         !changes.until
       if (unchanged) onClose()
-      else setAsking({ action: 'save', scopes: scopesFor(occurrence, clean, repeatSpec) })
+      else setAsking({ action: 'save', scopes: [] })
       return
     }
     // A completed task moved to the inbox is reopened: the inbox lists only open tasks, so it
@@ -125,13 +125,24 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
     onClose()
   }
 
+  // The fields stay editable while the choice is shown, so the offered scopes follow them.
+  const shownScopes =
+    asking?.action === 'save' && occurrence
+      ? scopesFor(occurrence, cleanDraft(), repeatSpec)
+      : (asking?.scopes ?? [])
+
   function choose(scope: EditScope) {
     if (!occurrence || !asking) return
-    actions.applySeries(
-      asking.action === 'delete'
-        ? planDelete(occurrence, scope)
-        : planEdit(occurrence, cleanDraft(), repeatSpec, scope, crypto.randomUUID()),
-    )
+    try {
+      actions.applySeries(
+        asking.action === 'delete'
+          ? planDelete(occurrence, scope)
+          : planEdit(occurrence, cleanDraft(), repeatSpec, scope, crypto.randomUUID()),
+      )
+    } catch {
+      // The form changed after the choice was shown; the buttons now show what is possible.
+      return
+    }
     onClose()
   }
 
@@ -431,20 +442,18 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
               <p className="text-sm font-medium">
                 {asking.action === 'save' ? 'Save the change for' : 'Delete'}
               </p>
-              {asking.action === 'save' && asking.scopes.length === 0 ? (
+              {asking.action === 'save' && shownScopes.length === 0 ? (
                 <p className="text-sm text-destructive">
                   Save a new day and a new end date one at a time: first one, then the other.
                 </p>
               ) : null}
-              {asking.action === 'save' &&
-              asking.scopes.length === 1 &&
-              asking.scopes[0] === 'this' ? (
+              {asking.action === 'save' && shownScopes.length === 1 && shownScopes[0] === 'this' ? (
                 <p className="text-xs text-muted-foreground">
                   In a weekly series a new day applies to this task only. To move every future task,
                   change Repeat to the new weekday.
                 </p>
               ) : null}
-              {asking.scopes.map((scope) => (
+              {shownScopes.map((scope) => (
                 <Button
                   key={scope}
                   type="button"

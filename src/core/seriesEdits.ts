@@ -21,7 +21,7 @@
  */
 
 import type { ISODate } from './dates.ts'
-import { sameRule, type RepeatRule } from './recurrence.ts'
+import { dayOfMonth, sameRule, type RepeatRule } from './recurrence.ts'
 import { applyPatch, type Subtask, type Task, type TaskDraft, type TaskPatch } from './tasks.ts'
 
 export type EditScope = 'this' | 'future' | 'all'
@@ -211,8 +211,24 @@ export function planEdit(
     seriesId: r.seriesId,
     from,
     keep: c.date ? null : r.occurrenceDate,
-    next: { id: newId, draft: { ...template(draft), date: start }, repeat, completedAt: null },
+    next: {
+      id: newId,
+      draft: { ...template(draft), date: start },
+      repeat: c.date || c.rule ? repeat : keepMonthDay(repeat, r.start, start),
+      completedAt: null,
+    },
   }
+}
+
+/** A monthly or yearly series continued from `start` keeps the day of the month it had from
+ *  `seriesStart` (from Feb 28, a series on the 31st stays on the 31st). */
+function keepMonthDay(repeat: RepeatSpec, seriesStart: ISODate, start: ISODate): RepeatSpec {
+  const { rule } = repeat
+  if (rule.freq !== 'monthly' && rule.freq !== 'yearly') return repeat
+  const day = dayOfMonth(rule, seriesStart)
+  return day === dayOfMonth({ ...rule, monthDay: undefined }, start)
+    ? repeat
+    : { ...repeat, rule: { ...rule, monthDay: day } }
 }
 
 export function planDelete(task: Task, scope: EditScope): SeriesWrite {

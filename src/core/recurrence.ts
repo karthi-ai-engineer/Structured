@@ -7,8 +7,10 @@
  *
  * - Weekly: on the chosen weekdays, every `interval` weeks counted in Monday-based weeks from the
  *   start's week. No weekdays means the start's weekday.
- * - Monthly and yearly: on the start's day of the month. A month without that day uses its last
- *   day (the 31st becomes the 30th or the 28th/29th), unlike RFC 5545, which would skip it.
+ * - Monthly and yearly: on the start's day of the month, or on `monthDay` (`BYMONTHDAY`) when
+ *   set. A series split off at a short month's last day keeps the original day that way: monthly
+ *   on the 31st, continued from Feb 28, stays on the 31st. A month without that day uses its
+ *   last day (the 31st becomes the 30th or the 28th/29th), unlike RFC 5545, which would skip it.
  */
 
 import {
@@ -29,6 +31,8 @@ export interface RepeatRule {
   interval: number
   /** Weekly only: weekdays 0 (Sunday) .. 6 (Saturday), sorted and unique. Empty otherwise. */
   weekdays: number[]
+  /** Monthly and yearly only: the day of the month (1..31), when it is not the start's day. */
+  monthDay?: number
 }
 
 export const MAX_INTERVAL = 99
@@ -65,7 +69,9 @@ export function parseRule(text: string | null | undefined): RepeatRule | null {
   }
   const freq = FREQS[parts.get('FREQ') ?? '']
   if (!freq) return null
-  for (const key of parts.keys()) if (!['FREQ', 'INTERVAL', 'BYDAY'].includes(key)) return null
+  for (const key of parts.keys()) {
+    if (!['FREQ', 'INTERVAL', 'BYDAY', 'BYMONTHDAY'].includes(key)) return null
+  }
   const intervalText = parts.get('INTERVAL') ?? '1'
   const interval = /^\d{1,2}$/.test(intervalText) ? Number(intervalText) : 0
   if (interval < 1 || interval > MAX_INTERVAL) return null
@@ -78,6 +84,12 @@ export function parseRule(text: string | null | undefined): RepeatRule | null {
     if (days.some((d) => d < 0)) return null
     weekdays = sortedDays(days)
   }
+  const byMonthDay = parts.get('BYMONTHDAY')
+  if (byMonthDay !== undefined) {
+    const day = /^\d{1,2}$/.test(byMonthDay) ? Number(byMonthDay) : 0
+    if ((freq !== 'monthly' && freq !== 'yearly') || day < 1 || day > 31) return null
+    return { freq, interval, weekdays, monthDay: day }
+  }
   return { freq, interval, weekdays }
 }
 
@@ -87,7 +99,15 @@ export function formatRule(rule: RepeatRule): string {
   if (rule.interval !== 1) text += `;INTERVAL=${rule.interval}`
   const days = rule.freq === 'weekly' ? sortedDays(rule.weekdays) : []
   if (days.length > 0) text += `;BYDAY=${days.map((d) => DAY_CODES[d]).join(',')}`
+  if (rule.monthDay !== undefined && (rule.freq === 'monthly' || rule.freq === 'yearly')) {
+    text += `;BYMONTHDAY=${rule.monthDay}`
+  }
   return text
+}
+
+/** The day of the month a monthly or yearly series falls on (before clamping). */
+export function dayOfMonth(rule: RepeatRule, start: ISODate): number {
+  return rule.monthDay ?? parseISODate(start).day
 }
 
 /** Problems with a rule the editor built; empty when it can be saved. */
@@ -137,7 +157,7 @@ export function occursOn(
     case 'yearly': {
       const s = parseISODate(start)
       const d = parseISODate(date)
-      if (d.day !== Math.min(s.day, daysInMonth(d.year, d.month))) return false
+      if (d.day !== Math.min(dayOfMonth(rule, start), daysInMonth(d.year, d.month))) return false
       if (rule.freq === 'yearly') {
         return d.month === s.month && (d.year - s.year) % rule.interval === 0
       }
@@ -190,11 +210,13 @@ export function describeRule(rule: RepeatRule, start: ISODate): string {
       return `${every} on ${ordered.map((d) => DAY_NAMES[d]).join(', ')}`
     }
     case 'monthly': {
-      const day = parseISODate(start).day
+      const day = dayOfMonth(rule, start)
       return `${every} on the ${ordinal(day)}${day > 28 ? ' (or the last day)' : ''}`
     }
-    case 'yearly':
-      return `${every} on ${formatDateLabel(start, 'd MMMM')}`
+    case 'yearly': {
+      const day = dayOfMonth(rule, start)
+      return `${every} on ${day} ${formatDateLabel(start, 'MMMM')}`
+    }
   }
 }
 

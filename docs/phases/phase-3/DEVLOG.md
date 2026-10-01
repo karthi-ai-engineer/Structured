@@ -81,3 +81,9 @@
   - `planEdit` now throws for any scope `scopesFor` does not offer.
 - **The MCP protocol tests** get a 20 s timeout: one timed out once under the full coverage run, and passes alone.
 
+### Code review, round 4: both round-3 items fixed; 1 new major issue; fixed
+- **The issue:** "this and future" from a clamped occurrence moved a monthly series on the 31st to the 28th.
+- **The fix:** rules may carry `BYMONTHDAY`. A split from a clamped day keeps the series' original day (also Feb 29 for yearly series).
+- **Stale scope buttons:** the editor now recomputes the offered scopes live, and ignores a choice that is no longer valid.
+- **Known and accepted:** moving a whole series from its first occurrence keeps completed occurrences on their old dates, as history.
+
