@@ -9,7 +9,7 @@ process.env.TZ = 'America/St_Johns'
 export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
-    include: ['src/**/*.test.{ts,tsx}', 'scripts/**/*.test.mjs'],
+    include: ['src/**/*.test.{ts,tsx}', 'server/**/*.test.ts', 'scripts/**/*.test.mjs'],
     environment: 'node',
     setupFiles: ['./src/test/setup.ts'],
     // Hermetic: .env.local must not leak real Supabase values into unit tests (same as CI).

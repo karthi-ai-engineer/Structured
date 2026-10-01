@@ -34,6 +34,7 @@ const LOCAL = Object.freeze({
   SUPABASE_PROJECT_REF: 'k'.repeat(20),
   VERCEL_PROJECT_NAME: 'structured-zz11yy22',
   PROD_URL: join2('https://', ['structured-zz11yy22', 'vercel', 'app'].join('.')),
+  MCP_SECRET: 'm'.repeat(40),
 })
 const PROJECT = Object.freeze({
   projectId: join2('prj', '_', 'Ab3'.repeat(8)),
@@ -163,8 +164,10 @@ describe('the env matrix (PLAN.md section 5.11)', () => {
       'SUPABASE_PROJECT_REF development config',
       'VERCEL_PROJECT_NAME development config',
       'PROD_URL development config',
+      'MCP_SECRET production secret',
+      'MCP_SECRET development config',
     ])
-    expect(MATRIX).toHaveLength(7)
+    expect(MATRIX).toHaveLength(8)
   })
 
   it('never stores a development value as Secret (Vercel refuses it)', () => {
@@ -402,6 +405,7 @@ describe('syncVercelEnv', () => {
     expect(forced.map((c) => `${c.args[2]} ${c.args[3]}`)).toEqual([
       'SUPABASE_SECRET_KEY production',
       'SUPABASE_PROJECT_REF development',
+      'MCP_SECRET production',
     ])
     for (const call of forced) expect(call.args).toContain('--force')
     expectNoValues(allText())

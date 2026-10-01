@@ -24,10 +24,11 @@ export const APP_KEYS = Object.freeze([
   'SUPABASE_PROJECT_REF',
   'VERCEL_PROJECT_NAME',
   'PROD_URL',
+  'MCP_SECRET',
 ])
 
 /** Keys whose values must never appear in the repo, commit messages or logs (leak check). */
-export const SENSITIVE_KEYS = Object.freeze([...APP_KEYS, 'VERCEL_OIDC_TOKEN', 'MCP_SECRET'])
+export const SENSITIVE_KEYS = Object.freeze([...APP_KEYS, 'VERCEL_OIDC_TOKEN'])
 
 /** Values `vercel env pull` writes for Secret (sensitive) variables. */
 export const PLACEHOLDERS = Object.freeze(['SENSITIVE_ENV_VALUE_PLACEHOLDER', '[SENSITIVE]'])

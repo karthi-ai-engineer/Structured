@@ -125,7 +125,7 @@ Enforced by ESLint (`eslint.config.js`, run by `npm run lint`) and, for `src/cor
 - Dates are `YYYY-MM-DD`, times are `HH:mm` (24 h) in the user's time zone (`settings.timezone`), and durations are integer minutes (PLAN.md section 10.3).
 - Task IDs are a UUID, or `<seriesId>:<date>` for a recurring occurrence.
 - MCP tool responses are a short human summary line followed by compact JSON.
-- MCP writes set `source='mcp'` and return a `batch_id`. They validate input with the zod schemas in `src/core/schemas.ts` and return warnings (overlap, over the energy limit, outside day hours, in the past) instead of failing.
+- MCP writes set `source='mcp'` and return a `batch_id`. They validate input with the zod schemas in `server/mcp/tools.ts` and return warnings (overlap, outside day hours, in the past, past midnight; the energy limit from Phase 3) instead of failing.
 - **One database for development and production.** Tests touch only rows whose title or name starts with `__test__`, delete them afterwards, and never write `settings`.
 - **The `settings` row already exists.** Phase 0 creates it on the first app load, with the browser's time zone. So "no settings row" can **not** trigger the Phase 1 seeding of the default "Rise and Shine" and "Wind Down" tasks (PLAN.md section 14, Phase 1). Phase 1 must pick another trigger, for example a seed marker such as `settings.seeded_at`, set by a conditional update (`… where seeded_at is null`) so that only one device seeds.
 - Optimistic concurrency: `.update(patch).eq('id', id).eq('updated_at', seen)`. Zero rows updated means a conflict: refetch.
@@ -142,6 +142,33 @@ Enforced by ESLint (`eslint.config.js`, run by `npm run lint`) and, for `src/cor
 - **Phone versus desktop:** under `lg`, bottom tabs, a floating add button and a bottom-sheet editor. From `lg`, a sidebar and an inbox panel next to the timeline.
 - **Safety net:** `platform/unload.ts` asks before leaving the page while a mutation is pending.
 - **Deferred to Phase 3:** recurring tasks and the default "Rise and Shine" / "Wind Down" anchors (master plan T18). Phase 1 reads only plain one-off rows (`repeat_rule` and `series_id` null).
+
+## MCP server (Phase 2)
+Claude reads and writes the planner through a remote MCP server at `https://<app>/api/mcp/<MCP_SECRET>`. The official `@modelcontextprotocol/server` v2 `createMcpHandler` serves it statelessly: the 2026-07-28 protocol natively, plus the 2025 Streamable HTTP fallback.
+
+- **Layout:**
+  - `api/mcp/[secret].ts`: thin Vercel entry
+  - `server/mcp/entry.ts`: secret check (constant time; 404 on a mismatch and when the env is incomplete, logging only the missing variable names)
+  - `server/mcp/server.ts`: builds an `McpServer` per request
+  - `server/mcp/tools.ts` and `server/mcp/prompts.ts`
+  - `server/store.ts`: Supabase with the secret key, behind the `TaskStore` interface
+  - `server/env.ts`
+- **Imports:** `server/` imports `src/core` with relative `.ts` paths. The root `tsconfig.json` sets `rewriteRelativeImportExtensions`, because Vercel compiles each file to `.js` and would otherwise leave `.ts` specifiers that crash at runtime. After changing imports, check with `npx --yes vercel@61.1.0 build --yes`, then run the built `.vercel/output/functions/api/mcp/[secret].func/api/mcp/[secret].js`.
+- **Tool conventions:** a one-line summary plus compact JSON (`server/mcp/format.ts`); `isError` for refusals; dates `YYYY-MM-DD` and times `HH:mm` in `settings.timezone`; durations in minutes.
+- **Adding a write tool:**
+  1. Validate the whole input first; write nothing if anything is invalid.
+  2. Compute warnings with `plannedTaskWarnings`.
+  3. `saveBatch` **before** writing, with one undo op per task: `updateOp(task, changes)` records the before and after values, a `create` op records the created values, and appended subtasks use `subtasks_added` with their ids.
+  4. Tag the writes with the batch id, and return `batch_id`.
+  5. Make sure `undo_batch` can revert it.
+  6. Add a case to `server/__tests__/mcp.test.ts` (the MCP client against `MemoryStore`), and extend `tests/integration/mcp.test.ts` when it touches the database.
+- **Undo semantics:** `undo_batch` reverts ops newest first. It skips a task whose current values differ from the op's `after` (the user changed it since) and lists it as `skipped`; `force: true` reverts those too. A failed request leaves the batch open: the revert ops are idempotent, so calling it again is safe. The batch is marked undone only when everything was reverted.
+- **Atomicity:** `create_tasks` is one insert, and `set_completion` / `delete_tasks` are one `updateMany` statement. `move_tasks` writes row by row; if one fails, it answers with the `batch_id` and the rows already moved.
+- **Secret:** `MCP_SECRET` (at least 32 characters) is in `.env.local` and Vercel (a Secret in production, Config in development). Rotate it by changing both, then re-adding the connector in Claude. Never put the full URL in the repo, issues, PRs or logs.
+- **Connecting a client:**
+  - **Claude web, desktop and mobile:** Settings → Connectors → Add custom connector → paste the URL (no auth).
+  - **Claude Code:** `claude mcp add --transport http structured <URL>`.
+  - **Local testing:** `npx @modelcontextprotocol/inspector`, or the MCP client pattern in the tests.
 
 ## Database migrations
 - Files are `supabase/migrations/NNNN_<name>.sql`: four digits, sequential (`0001_init.sql`, `0002_goals.sql`, …), created by hand. **Never** run `supabase migration new` (its timestamp names sort after `0002…` and block `db push`), and never rename or edit a migration that has been applied; add a new one.
@@ -213,7 +240,7 @@ Run these from the repo root, in Git Bash on Windows. `npm run verify` is the fu
 | `npm run db:migrations` | Lists local and remote migration versions |
 | `npm run db:types` | Regenerates `src/data/database.types.ts` (UTF-8, LF) |
 | `npm run db:ping` | One REST probe: `db: ok (200)`, or `PAUSED (540)` |
-| `npm run env:check` | Status of the 7 app keys in `.env.local` (`ok`, `missing`, `empty`, `placeholder`, `whitespace`); never values |
+| `npm run env:check` | Status of the 8 app keys in `.env.local` (`ok`, `missing`, `empty`, `placeholder`, `whitespace`); never values |
 | `npm run env:sync-vercel` | Read-only report: `.env.local` against the Vercel env matrix. `-- --apply` adds missing rows; `-- --apply --force` also overwrites rows that differ. |
 
 Other tools:
@@ -235,6 +262,7 @@ Values live only in `.env.local` (gitignored), in the Vercel project and in GitH
 | `SUPABASE_PROJECT_REF` | yes | – | – | Config | – |
 | `VERCEL_PROJECT_NAME` | yes | – | – | Config | – |
 | `PROD_URL` | yes | – | – | Config | yes |
+| `MCP_SECRET` | yes | Secret | – | Config | – |
 | `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | in `.vercel/project.json` | – | – | – | yes |
 | `VERCEL_TOKEN` | – | – | – | – | yes |
 

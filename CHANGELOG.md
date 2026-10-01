@@ -2,6 +2,35 @@
 
 All notable changes, per release. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow the roadmap phases (Phase 0 is `v0.0.1`, and Phase n is `v0.n.0`).
 
+## [0.2.0] - 2026-10-01: Phase 2, Claude connector (MCP server)
+
+### Added
+- **Remote MCP server for Claude** at `https://<app>/api/mcp/<MCP_SECRET>`:
+  - stateless, built on the official MCP SDK v2 (the 2026-07-28 protocol, plus the 2025 Streamable HTTP fallback)
+  - works in Claude on the web, desktop and mobile, and in Claude Code
+- **Read tools:** `get_context` (today, now, time zone, day hours, counts, allowed colors and icons), `get_schedule` (up to 31 days, with free slots and overlaps), `list_inbox`, `find_free_slots`, `list_overdue`, `search_tasks`.
+- **Write tools:**
+  - `create_tasks`: a dry run first; all-or-nothing validation; warnings for overlaps, day hours, the past and midnight
+  - `update_task`, `move_tasks`, `set_completion`, `delete_tasks`, `add_subtasks`
+- **Undo:** every write is one batch with a `batch_id`, and `undo_batch` reverts it.
+  - Tasks you changed in the app afterwards are kept unless the undo is forced.
+  - A partial undo can be retried safely.
+- **Prompts:** `plan_day` (shows the plan and asks before writing) and `replan_overdue`.
+- **Shared core logic:** free slots, overlaps and planning warnings (`src/core/schedule.ts`), row mapping and icon names, used by both the app and the server.
+- **Database:** migration `0002_mcp_batches`, the undo records.
+- **Connector secret:** `MCP_SECRET` in the env tooling (a Secret in production) and in the leak scan.
+
+### Fixed (code review before merge)
+- An undo that failed partway can be retried, and is no longer marked done early.
+- Completing and deleting many tasks is all or nothing. A failed move reports what moved and how to undo it.
+- Undo no longer overwrites changes made in the app after Claude's write. Undoing added subtasks removes only those.
+- A start time makes an all-day task timed; a start time without a date is an error.
+- An unknown icon is refused instead of clearing the current one. Unknown task ids are reported.
+- Zero-length tasks no longer split free time. "Overdue" uses one 14-day window everywhere.
+- Search treats `*` literally and never matches everything.
+- A misconfigured endpoint answers 404, like a wrong secret.
+- Tasks ending after midnight are flagged.
+
 ## [0.1.0] - 2026-09-30: Phase 1, Web MVP
 
 ### Added
@@ -43,5 +72,6 @@ All notable changes, per release. The format follows [Keep a Changelog](https://
 - The full Supabase schema (tasks, goals, focus sessions, settings, day notes, templates) with realtime, and a "DB connected" home page.
 - CI on every push and PR; production deploys through GitHub Actions with a smoke check; CodeQL; Dependabot; a protected `main`.
 
+[0.2.0]: https://github.com/karthi-ai-engineer/Structured/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/karthi-ai-engineer/Structured/compare/v0.0.1...v0.1.0
 [0.0.1]: https://github.com/karthi-ai-engineer/Structured/releases/tag/v0.0.1

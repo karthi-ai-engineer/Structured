@@ -28,6 +28,7 @@ const TABLES = [
   'focus_sessions',
   'day_notes',
   'templates',
+  'mcp_batches',
 ] as const satisfies readonly TableName[]
 
 const REQUIRED_ENV = [

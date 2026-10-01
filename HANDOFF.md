@@ -3,10 +3,19 @@
 > Read this first when resuming on any device. It is updated at the end of every work package, every fix round, every phase, and before every machine switch. Values (keys, URLs, the Vercel project name, the Supabase ref) are never written here: see `.env.local`.
 
 ## Current status
+- **Phase 2 (Claude connector, MCP server): SHIPPED** as `v0.2.0`.
+  - Merged into `phase-2-mcp`: PRs #17 and #18 (with 12 code review fixes), plus the release-prep PR.
+  - Then the release PR into `main`, the production deploy, and a live check of the endpoint through the MCP client.
+  - Epic #14 and milestone "Phase 2: MCP server" are closed. Verified in `docs/phases/phase-2/VERIFICATION.md`; changes are in `CHANGELOG.md`.
+  - **Owner step:** add the connector in Claude with the URL `PROD_URL` + `/api/mcp/` + `MCP_SECRET` (both in `.env.local`). See README, "Connect Claude".
+- **Next: Phase 3 (Structured parity)** on a new branch `phase-3-parity` from `main`:
+  - recurring tasks (with the "Rise and Shine" / "Wind Down" anchors)
+  - drag and drop, week and month views, replan
+  - energy monitor, focus mode, alerts, quick add
+  - Scope: master `PLAN.md` §14 "Phase 3". It is a large phase: split it into several work packages and PRs.
 - **Phase 1 (Web MVP): SHIPPED** as `v0.1.0`. PRs #7, #9 and #11 went into `phase-1-web-mvp`, then the release PR into `main`; the deploy workflow deployed production. Epic #5 and milestone "Phase 1: Web MVP" are closed. Verified in `docs/phases/phase-1/VERIFICATION.md`, and changes are listed in `CHANGELOG.md`.
 - **Phase 0 (Foundation): SHIPPED** as `v0.0.1` (PR #2, fix PR #4).
-- **Next: Phase 2 (MCP server, "Claude plans my day")** on a new branch `phase-2-mcp` from `main`. Scope: master `PLAN.md` §10 and §14 "Phase 2".
-- **Last updated:** 2026-09-30
+- **Last updated:** 2026-10-01
 - **Process from Phase 1 (decided 2026-09-30): lean.** The owner found the multi-agent pipeline far too slow for the work. From now on:
   - Build directly in the session: one issue plus one `feat/…` PR per work package, each reviewed by at most one reviewer agent.
   - Run one QA pass per phase, then the release PR, merge and release.
@@ -46,10 +55,7 @@ Details, commands and deviations for every work package are in `docs/phases/phas
 - **GitHub:** repo secrets `VERCEL_TOKEN` (Vercel scope "Karthi Labs"), `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` and `PROD_URL`; ruleset 24225914; CodeQL default setup; description and 12 topics.
 
 ### Next
-1. **Phase 2 (MCP server):** `git switch main && git pull && git switch -c phase-2-mcp`, then follow the lean process above. The scope is in master `PLAN.md` §10 (tools, prompts, auth by secret path) and §14 "Phase 2".
-   - Early checks: `server/` and `api/` need their own tsconfig referenced from `tsconfig.json`.
-   - Confirm that Vercel's function bundling resolves `src/core`'s relative `.ts` imports.
-   - Reuse `src/core/tasks.ts`, `src/data/mappers.ts` and the repositories.
+1. **Phase 3 (Structured parity):** `git switch main && git pull && git switch -c phase-3-parity`, then follow the lean process above.
 2. **Phase 0 QA notes** (still useful as reference): DEVLOG WP9 "Notes for testers" and the acceptance-criteria self-check table.
 3. **Ship follow-ups:**
    - **CodeQL languages** (PLAN §17.1 step 8). Right after the merge, `gh api repos/karthi-ai-engineer/Structured/code-scanning/default-setup --jq '.state, .languages'` must show `configured` with `javascript-typescript` and `actions`. If a language is missing, run: `printf '{"state":"configured","query_suite":"default","languages":["javascript-typescript","actions"]}' | gh api -X PATCH repos/karthi-ai-engineer/Structured/code-scanning/default-setup --input -`. The same follow-up is in the PR #2 body.
