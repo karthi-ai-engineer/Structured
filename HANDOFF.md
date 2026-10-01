@@ -15,11 +15,14 @@
     - WP2, timeline interactions (#26)
     - WP3, week and month views and Replan (#28)
     - WP4, energy monitor, focus mode and alerts (#30)
-  - **WP5, quick add, suggestions, search, undo, duplicate, priority and due date:** PR open from `feat/phase-3-wp5-quickadd`.
+    - WP5, quick add, suggestions, search, undo, duplicate, priority and due date (#32)
+  - **WP6, command palette, installable app with an offline cache, nightly backup and code splitting:** PR open from `feat/phase-3-wp6-pwa`.
+    - New secret `BACKUP_PASSPHRASE`: it is in `.env.local`, the Vercel development env and the GitHub secrets.
+    - The backup also needs the GitHub secret `SUPABASE_DB_URL` (owner step: `node scripts/lib/db-url.mjs | gh secret set SUPABASE_DB_URL`).
+    - The GitHub secrets `SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD`, set during WP6, are no longer used and can be deleted.
   - **Migrations `0003` to `0008` are applied.** `npm run db:migrations` shows local = remote.
   - **Next:**
-    - WP6: command palette and shortcuts, PWA install and offline cache, nightly backup, code splitting
-    - then the release PR `phase-3-parity` → `main` as `v0.3.0`
+    - the release PR `phase-3-parity` → `main` as `v0.3.0`
   - Dev log: `docs/phases/phase-3/DEVLOG.md`.
 - **Phase 2 (Claude connector, MCP server): SHIPPED** as `v0.2.0`.
   - Merged into `phase-2-mcp`: PRs #17 and #18 (with 12 code review fixes), plus the release-prep PR.
@@ -36,7 +39,7 @@
   - Dev log: `docs/phases/phase-3/DEVLOG.md`.
 - **Phase 1 (Web MVP): SHIPPED** as `v0.1.0`. PRs #7, #9 and #11 went into `phase-1-web-mvp`, then the release PR into `main`; the deploy workflow deployed production. Epic #5 and milestone "Phase 1: Web MVP" are closed. Verified in `docs/phases/phase-1/VERIFICATION.md`, and changes are listed in `CHANGELOG.md`.
 - **Phase 0 (Foundation): SHIPPED** as `v0.0.1` (PR #2, fix PR #4).
-- **Last updated:** 2026-10-01 (Phase 3 WP5)
+- **Last updated:** 2026-10-01 (Phase 3 WP6)
 - **Process from Phase 1 (decided 2026-09-30): lean.** The owner found the multi-agent pipeline far too slow for the work. From now on:
   - Build directly in the session: one issue plus one `feat/…` PR per work package, each reviewed by at most one reviewer agent.
   - Run one QA pass per phase, then the release PR, merge and release.
@@ -193,6 +196,17 @@ Run everything in **Git Bash**, one step at a time. Each step ends with a check;
 5. `npm run db:migrations` shows the same versions locally and remotely.
 
 ## Recovery and runbooks
+
+### Restore a backup
+The nightly `Backup` workflow stores an encrypted dump (schema and data) for 14 days.
+1. `gh run list --workflow backup.yml` and pick a run, then `gh run download <run-id>` (it holds `backup.tgz.gpg`).
+2. Decrypt (Git Bash; the passphrase comes from `.env.local` and is never printed; `gpg` refuses a tampered file):
+   ```bash
+   node scripts/lib/env-file.mjs get .env.local BACKUP_PASSPHRASE |      gpg --batch --pinentry-mode loopback --passphrase-fd 0 --decrypt backup.tgz.gpg | tar xz
+   ```
+   That gives `schema.sql` and `data.sql`.
+3. Restore into a project with `psql` (schema first, then data). Never commit the files: they hold all your data.
+4. **One-time setup** on a new repo or after a password rotation: `node scripts/lib/db-url.mjs | gh secret set SUPABASE_DB_URL` (needs `npm run db:link` first, for the pooler address).
 
 ### Paused database (HTTP 540)
 The free Supabase project pauses after 7 days without activity. `npm run db:ping` then prints `PAUSED (540)`, and the app shows "The Supabase project is paused".

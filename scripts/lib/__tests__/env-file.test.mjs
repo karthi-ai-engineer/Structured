@@ -48,10 +48,11 @@ function fakeIo(stdin = '') {
 }
 
 describe('key lists', () => {
-  it('has the 7 app keys of .env.example and the extra sensitive keys', () => {
-    expect(APP_KEYS).toHaveLength(8)
+  it('has the app keys of .env.example and the extra sensitive keys', () => {
+    expect(APP_KEYS).toHaveLength(9)
     expect(SENSITIVE_KEYS).toEqual([...APP_KEYS, 'VERCEL_OIDC_TOKEN'])
     expect(SENSITIVE_KEYS).toContain('MCP_SECRET')
+    expect(SENSITIVE_KEYS).toContain('BACKUP_PASSPHRASE')
   })
 })
 

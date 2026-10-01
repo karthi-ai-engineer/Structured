@@ -1,0 +1,76 @@
+name: Backup
+
+# Nightly database backup (PLAN.md S11), which also keeps the free Supabase project from pausing.
+# The dump connects through the session pooler (SUPABASE_DB_URL; GitHub runners have no IPv6
+# for the direct host), so no Supabase access token is needed. It is encrypted with
+# BACKUP_PASSPHRASE (gpg, authenticated) before it is stored: artifacts of a public repository
+# can be downloaded by anyone. Nothing here prints a host, a key or the data.
+#
+# One-time setup:   node scripts/lib/db-url.mjs | gh secret set SUPABASE_DB_URL
+# Restore:          see HANDOFF.md, "Restore a backup".
+on:
+  schedule:
+    - cron: '0 18 * * *' # 03:00 in Asia/Tokyo
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: nightly-backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Check required secrets
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          missing=0
+          for name in SUPABASE_DB_URL BACKUP_PASSPHRASE; do
+            if [ -z "${!name}" ]; then echo "::error::Repository secret $name is not set"; missing=1; fi
+          done
+          exit "$missing"
+      - name: Install dependencies (the pinned Supabase CLI)
+        run: npm ci --no-audit --no-fund
+      - name: Dump the database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/backup"
+          # The CLI's own output can name the host, so it goes to a file that is never shown.
+          log="$RUNNER_TEMP/supabase.log"
+          for part in schema data; do
+            flag=""; [ "$part" = data ] && flag="--data-only"
+            if ! npx supabase db dump --db-url "$SUPABASE_DB_URL" $flag -f "$RUNNER_TEMP/backup/$part.sql" >>"$log" 2>&1; then
+              echo "::error::supabase db dump ($part) failed"; rm -f "$log"; exit 1
+            fi
+          done
+          rm -f "$log"
+          for f in "$RUNNER_TEMP"/backup/*.sql; do echo "dump: $(basename "$f") $(wc -c < "$f") bytes"; done
+      - name: Encrypt
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          tar czf "$RUNNER_TEMP/backup.tgz" -C "$RUNNER_TEMP/backup" .
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --quiet --pinentry-mode loopback \
+            --passphrase-fd 0 --symmetric --cipher-algo AES256 \
+            --output backup.tgz.gpg "$RUNNER_TEMP/backup.tgz"
+          rm -rf "$RUNNER_TEMP/backup" "$RUNNER_TEMP/backup.tgz"
+          echo "encrypted: $(wc -c < backup.tgz.gpg) bytes"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: backup-${{ github.run_id }}
+          path: backup.tgz.gpg
+          retention-days: 14
+          if-no-files-found: error

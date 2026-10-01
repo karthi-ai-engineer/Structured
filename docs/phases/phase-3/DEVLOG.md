@@ -243,3 +243,56 @@
 - **Undo and suggestions** read only real task lists; search results hold series templates.
 - **Accepted:** "Dinner at 8" means 08:00. Only "at 1" to "at 7" mean the afternoon; write 8pm.
 
+## WP6: Command palette, installable app, offline cache, nightly backup, code splitting (2026-10-01)
+
+### What was done
+- **Command palette (S6):** Ctrl/⌘+K anywhere.
+  - Go to today, week, month, inbox, search, Replan or settings.
+  - New task, focus on the running task, switch the theme, or open a task by name.
+  - Arrow keys and Enter, with listbox semantics. `/` jumps to search.
+- **Installable app (S7):** a manifest, icons drawn by a small script (no image library), and a theme color.
+- **Offline read cache (S9):** `public/sw.js`, registered in production builds only.
+  - Assets are cache first; pages are network first, with the app shell offline.
+  - Supabase reads are network first, with the last response offline (at most 300 cached).
+  - It never caches writes or `/api/*`.
+  - An Install button is not needed: browsers offer installation themselves.
+- **Nightly backup (S11):** `backup.yml`, run by the scheduler and on demand.
+  - The pinned Supabase CLI dumps the schema and the data. AES-256 encryption with `BACKUP_PASSPHRASE` comes first, since artifacts of a public repo are downloadable. Retention is 14 days.
+  - No host, key or data is ever printed. It also keeps the free project awake.
+- **Code splitting:**
+  - The week, month, Replan, focus and search screens and the editor load on demand.
+  - The first download went from 753 kB (226 kB gzip) to about 660 kB in two chunks (about 200 kB gzip).
+- **Smoke check:** after every deploy, it also checks that `/manifest.webmanifest` and `/sw.js` are served.
+
+### Secrets
+- **New `BACKUP_PASSPHRASE`** (random, 43 characters), in `.env.local`, the Vercel development env (`env:sync-vercel --apply`, so other machines get it) and the GitHub secrets.
+- **`SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD`** were added to the GitHub secrets for the first design (see the review below: they are no longer used).
+- **A slip:** the first attempt used the wrong `env-file set` syntax, which stored an empty GitHub secret. It was caught by checking the value lengths (never the values) and set again; nothing was printed.
+
+### Commands run
+- `npm run verify`
+- `npm run test:e2e`: the new `palette.spec.ts`, and the whole suite
+- `npm run test:e2e:pwa`: a production build; the app installs and opens offline with the same tasks
+- **The backup workflow can only be dispatched from `main`.** It is checked after the release merge (see the verification report).
+
+### Code review, round 1 (PR #34): changes requested; 2 major and 6 minor findings, all fixed
+- **Major: the backup could never run.** `supabase link` needs a Supabase access token that CI lacks.
+  - The dump now connects with `--db-url` through the session pooler (`SUPABASE_DB_URL`, built by `scripts/lib/db-url.mjs` from the pooler address the CLI recorded and the password).
+  - **Owner step:** setting that GitHub secret was blocked for me by the session's permission rules, so the owner sets it with one command (`HANDOFF.md`).
+  - Docker was not running locally, so the dump is first checked in CI.
+- **Major: a failed editor chunk** (offline, or an old tab after a deploy) took the whole app down.
+  - The editor sits in its own error boundary: it closes, with a notice.
+  - Every on-demand screen is fetched 3 s after start (`features/shell/screens.ts`), so the service worker has them for offline use.
+- **Minor fixes:**
+  - the shell cache keeps its newest 80 entries (old builds' files go)
+  - page loads fall back to the cached shell after 3 s on a bad connection
+  - backups use `gpg --symmetric` (authenticated: a tampered file is refused)
+  - Ctrl+K does nothing over another dialog (the editor's edits are safe)
+  - the palette highlight is always clamped to the list
+  - Escape that closes the palette over focus mode no longer leaves focus mode
+
+### Code review, round 2: approved; its 3 new minors fixed before merge
+- **After a failed load, the editor gets a fresh `lazy()` component,** so the next opening tries again (`lazy` remembers failures).
+- **A cache-first hit is written again,** so a file that every build keeps stays among the newest and is never trimmed.
+- **The background refresh of the app shell is kept alive with `waitUntil`** when the cached shell answers first.
+

@@ -8,17 +8,22 @@ import { settingsKey } from '@/data/queries/keys'
 import { isDbConfigured } from '@/data/queries/repos'
 import { useRealtimeSync } from '@/data/queries/realtime'
 import { useSeedDefaults } from '@/data/queries/seed'
-import { MonthView } from '@/features/calendar/MonthView'
-import { ReplanView } from '@/features/calendar/ReplanView'
-import { WeekView } from '@/features/calendar/WeekView'
+
 import { useAlertScheduler } from '@/features/alerts/useAlertScheduler'
 import { EditorProvider } from '@/features/editor/EditorProvider'
-import { FocusView } from '@/features/focus/FocusView'
-import { SearchView } from '@/features/search/SearchView'
+
 import { InboxView } from '@/features/inbox/InboxView'
 import { SettingsView } from '@/features/settings/SettingsView'
 import { ThemeSync } from '@/features/settings/ThemeSync'
 import { AppShell } from '@/features/shell/AppShell'
+import {
+  FocusView,
+  MonthView,
+  preloadScreens,
+  ReplanView,
+  SearchView,
+  WeekView,
+} from '@/features/shell/screens'
 import { DayView } from '@/features/timeline/DayView'
 import { isOnline } from '@/platform/network'
 import { detectTimeZone } from '@/platform/timezone'
@@ -33,6 +38,7 @@ function Background() {
   useSeedDefaults()
   useAlertScheduler()
   useEffect(() => guardUnload(saving), [saving])
+  useEffect(() => preloadScreens(), [])
   useEffect(() => {
     if (!isDbConfigured) return
     void startDbCheck({ timezone: detectTimeZone(), online: isOnline() }).then(() =>

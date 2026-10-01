@@ -25,6 +25,7 @@ export const APP_KEYS = Object.freeze([
   'VERCEL_PROJECT_NAME',
   'PROD_URL',
   'MCP_SECRET',
+  'BACKUP_PASSPHRASE',
 ])
 
 /** Keys whose values must never appear in the repo, commit messages or logs (leak check). */

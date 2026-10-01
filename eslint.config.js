@@ -134,5 +134,10 @@ export default defineConfig([
     extends: [js.configs.recommended, tseslint.configs.disableTypeChecked],
     languageOptions: { globals: globals.node },
   },
+  {
+    // The service worker runs in its own global scope (self, caches), not in Node.
+    files: ['public/sw.js'],
+    languageOptions: { globals: globals.serviceworker },
+  },
   prettier,
 ])

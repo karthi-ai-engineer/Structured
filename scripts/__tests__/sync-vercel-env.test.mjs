@@ -35,6 +35,7 @@ const LOCAL = Object.freeze({
   VERCEL_PROJECT_NAME: 'structured-zz11yy22',
   PROD_URL: join2('https://', ['structured-zz11yy22', 'vercel', 'app'].join('.')),
   MCP_SECRET: 'm'.repeat(40),
+  BACKUP_PASSPHRASE: 'b'.repeat(43),
 })
 const PROJECT = Object.freeze({
   projectId: join2('prj', '_', 'Ab3'.repeat(8)),
@@ -166,8 +167,9 @@ describe('the env matrix (PLAN.md section 5.11)', () => {
       'PROD_URL development config',
       'MCP_SECRET production secret',
       'MCP_SECRET development config',
+      'BACKUP_PASSPHRASE development config',
     ])
-    expect(MATRIX).toHaveLength(8)
+    expect(MATRIX).toHaveLength(9)
   })
 
   it('never stores a development value as Secret (Vercel refuses it)', () => {

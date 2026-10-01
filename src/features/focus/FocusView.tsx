@@ -162,6 +162,8 @@ function FocusTimer({ task }: { task: Task }) {
         e.preventDefault()
         togglePause()
       } else if (e.key === 'Escape') {
+        // Escape that closes another dialog over focus mode (the palette) is not for us.
+        if (e.defaultPrevented || document.querySelectorAll('[role="dialog"]').length > 1) return
         exit(false)
       }
     }
