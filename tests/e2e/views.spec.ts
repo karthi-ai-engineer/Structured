@@ -56,7 +56,7 @@ test('week and month views show the plan and lead back to a day', async ({ page 
   // Month: the day cell lists it and opens the day.
   await page.goto('/month/2099-07')
   await loaded(page)
-  const cell = page.getByRole('gridcell', { name: /15 July/ })
+  const cell = page.getByRole('link', { name: /15 July/ })
   await expect(cell).toContainText(title)
   await cell.click()
   await expect(page).toHaveURL(/\/day\/2099-07-15$/)

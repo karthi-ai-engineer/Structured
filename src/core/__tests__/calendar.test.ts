@@ -109,7 +109,27 @@ describe('fitIntoDay', () => {
       21 * 60,
     )
     expect(unplaced.map((t) => t.id)).toEqual(['big'])
-    expect(placed.map((p) => `${p.task.id} ${p.startTime}`)).toEqual(['ping 21:00', 'day 21:01'])
+    expect(placed.map((p) => `${p.task.id} ${p.startTime}`)).toEqual(['ping 21:00', 'day 21:00'])
+  })
+
+  it('keeps later tasks on the 5-minute grid after zero-length ones', () => {
+    const { placed } = fitIntoDay(
+      [
+        task('day', { isAllDay: true }),
+        task('ping', { durationMin: 0 }),
+        task('a', { durationMin: 30 }),
+        task('b', { durationMin: 30 }),
+      ],
+      [],
+      DAY,
+      10 * 60,
+    )
+    expect(placed.map((p) => `${p.task.id} ${p.startTime}`)).toEqual([
+      'day 10:00',
+      'ping 10:00',
+      'a 10:00',
+      'b 10:30',
+    ])
   })
 
   it('places nothing after the day is over', () => {

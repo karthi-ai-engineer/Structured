@@ -17,24 +17,29 @@ export function ReplanView() {
   const settings = useAppSettings()
   const { today, nowMinutes } = useClock(settings.timezone)
   const query = useOverdueTasks(today)
-  const todayTasks = useDayTasks(today).data ?? []
+  const todayQuery = useDayTasks(today)
+  const todayTasks = todayQuery.data ?? []
+  // Placing tasks needs today's plan: until it has loaded, today would look empty.
+  const ready = todayQuery.data !== undefined
   const actions = useTaskActions()
   const overdue = query.data ?? []
   const byDay = tasksByDay(overdue)
   const window = windowOf(settings)
 
   /** Today, in the first free slot that fits (or the next quarter hour if none does). */
+  /** The move to today: all-day tasks keep their all-day place; timed ones get `startTime`. */
+  function moveToToday(task: Task, startTime: string) {
+    actions.update(task, task.isAllDay ? { date: today } : { date: today, startTime })
+  }
+
   function toToday(task: Task) {
     const { placed } = fitIntoDay([task], todayTasks, window, nowMinutes)
-    actions.update(task, {
-      date: today,
-      startTime: placed[0]?.startTime ?? nextStartTime(nowMinutes),
-    })
+    moveToToday(task, placed[0]?.startTime ?? nextStartTime(nowMinutes))
   }
 
   function fitAll() {
     const { placed, unplaced } = fitIntoDay(overdue, todayTasks, window, nowMinutes)
-    for (const p of placed) actions.update(p.task, { date: today, startTime: p.startTime })
+    for (const p of placed) moveToToday(p.task, p.startTime)
     if (unplaced.length > 0) {
       notify(
         `${unplaced.length} ${unplaced.length === 1 ? 'task does' : 'tasks do'} not fit into today's free time. Move ${unplaced.length === 1 ? 'it' : 'them'} one by one.`,
@@ -63,7 +68,7 @@ export function ReplanView() {
           </div>
         ) : (
           <>
-            <Button className="self-start" onClick={fitAll}>
+            <Button className="self-start" onClick={fitAll} disabled={!ready}>
               <Sparkles data-icon="inline-start" /> Fit all into today
             </Button>
             {[...byDay.entries()].map(([date, tasks]) => (
@@ -93,7 +98,12 @@ export function ReplanView() {
                         </span>
                       </span>
                       <span className="flex items-center gap-1">
-                        <Button size="sm" variant="outline" onClick={() => toToday(task)}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!ready}
+                          onClick={() => toToday(task)}
+                        >
                           <Sun data-icon="inline-start" /> Today
                         </Button>
                         <Button

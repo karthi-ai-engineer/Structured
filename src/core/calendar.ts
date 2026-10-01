@@ -97,7 +97,8 @@ export function fitIntoDay(
     }
     const start = toMinutes(slot.start)
     placed.push({ task, startTime: fromMinutes(start) })
-    busy.push({ start, end: start + Math.max(need, 1) })
+    // All-day and zero-length tasks take no time, so they never push the next one along.
+    if (need > 0) busy.push({ start, end: start + need })
   }
   return { placed, unplaced }
 }

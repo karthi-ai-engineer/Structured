@@ -145,3 +145,10 @@
 ### Notes for testers
 - **"Fit all into today"** moves every listed task. The e2e tests use only the per-task Today button, so real overdue tasks are never touched.
 - **Repeating tasks** are not listed in Replan: they come back on their own.
+
+### Code review (PR #28): approved, with 4 minor findings, all fixed before merge
+- **"Fit all into today":** all-day and 0-minute tasks no longer take a minute of busy time, so later tasks stay on the 5-minute grid.
+- **Replan's Today and "Fit all":** they wait until today's plan has loaded, so they never schedule over tasks that are still loading.
+- **"Today" on an all-day task:** it moves only the date, with no stray start time.
+- **The month grid:** a plain section of links instead of grid roles that promised arrow-key cell navigation.
+

@@ -84,20 +84,16 @@ export function MonthView() {
       </header>
 
       <QueryState query={query}>
-        <div role="grid" aria-label={formatDateLabel(`${month}-01`, 'MMMM yyyy')}>
-          <div role="row" className="grid grid-cols-7 pb-1">
+        <section aria-label={formatDateLabel(`${month}-01`, 'MMMM yyyy')}>
+          <div aria-hidden="true" className="grid grid-cols-7 pb-1">
             {grid.slice(0, 7).map((day) => (
-              <div
-                key={day}
-                role="columnheader"
-                className="text-center text-xs font-medium text-muted-foreground"
-              >
+              <div key={day} className="text-center text-xs font-medium text-muted-foreground">
                 {formatDateLabel(day, 'EEE')}
               </div>
             ))}
           </div>
           {[0, 1, 2, 3, 4, 5].map((week) => (
-            <div key={week} role="row" className="grid grid-cols-7 border-t">
+            <div key={week} className="grid grid-cols-7 border-t">
               {grid.slice(week * 7, week * 7 + 7).map((day) => {
                 const tasks = byDay.get(day) ?? []
                 const inMonth = monthOf(day) === month
@@ -106,7 +102,6 @@ export function MonthView() {
                 return (
                   <Link
                     key={day}
-                    role="gridcell"
                     to={isToday ? '/' : `/day/${day}`}
                     aria-label={`${formatDateLabel(day, 'EEEE, d MMMM')}: ${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}${open < tasks.length ? `, ${tasks.length - open} done` : ''}`}
                     className={cn(
@@ -160,7 +155,7 @@ export function MonthView() {
               })}
             </div>
           ))}
-        </div>
+        </section>
       </QueryState>
     </div>
   )
