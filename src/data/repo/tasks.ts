@@ -32,6 +32,8 @@ export interface TasksRepo {
   listDay(date: ISODate): Promise<Task[]>
   listRange(from: ISODate, to: ISODate): Promise<Task[]>
   listInbox(): Promise<Task[]>
+  /** Unfinished one-off tasks dated `since` up to the day before `before`, oldest first. */
+  listOverdue(before: ISODate, since: ISODate): Promise<Task[]>
   /** A one-off task, or a new series when `repeat` is given. */
   create(id: string, draft: TaskDraft, repeat?: RepeatSpec | null): Promise<void>
   /** A one-off task; `repeat` turns it into a series. */
@@ -134,6 +136,17 @@ export function createTasksRepo(db: Db): TasksRepo {
   return {
     listDay: (date) => listRange(date, date),
     listRange,
+
+    async listOverdue(before, since) {
+      const { data, error, status } = await plain()
+        .gte('date', since)
+        .lt('date', before)
+        .is('completed_at', null)
+        .order('date')
+        .order('start_time')
+      if (error) fail(status, error)
+      return data.map(rowToTask)
+    },
 
     async listInbox() {
       const { data, error, status } = await plain()

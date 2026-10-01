@@ -14,12 +14,27 @@ import { occursOn } from '@/core/recurrence'
 import { generatedOccurrence } from '@/core/series'
 import { sharedPatch, type NextTask, type RepeatSpec, type SeriesWrite } from '@/core/seriesEdits'
 import { applyPatch, belongsTo, type Task, type TaskDraft, type TaskPatch } from '@/core/tasks'
-import { listOfKey, taskKeys, taskMutationKey } from '@/data/queries/keys'
+import { OVERDUE_DAYS } from '@/core/calendar'
+import { datesOfList, listOfKey, taskKeys, taskMutationKey } from '@/data/queries/keys'
 import { tasks } from '@/data/queries/repos'
 import { notify } from '@/stores/notices'
 
 export function useDayTasks(date: ISODate) {
   return useQuery({ queryKey: taskKeys.day(date), queryFn: () => tasks().listDay(date) })
+}
+
+export function useRangeTasks(from: ISODate, to: ISODate) {
+  return useQuery({
+    queryKey: taskKeys.range(from, to),
+    queryFn: () => tasks().listRange(from, to),
+  })
+}
+
+export function useOverdueTasks(today: ISODate) {
+  return useQuery({
+    queryKey: taskKeys.overdue(today),
+    queryFn: () => tasks().listOverdue(today, addDays(today, -OVERDUE_DAYS)),
+  })
 }
 
 export function useInboxTasks() {
@@ -122,7 +137,7 @@ export function writeSeriesToCache(qc: QueryClient, write: SeriesWrite): void {
 }
 
 /** Shows what continues after a split: the one-off task, or the new series' occurrences in
- *  every cached day (except where a kept occurrence already stands). */
+ *  every cached day and range (except where a kept occurrence already stands). */
 function writeNextToCache(qc: QueryClient, next: NextTask, kept: ReadonlySet<ISODate>): void {
   const task: Task = { ...newTask(next.id, next.draft, nowIso()), completedAt: next.completedAt }
   const start = task.date
@@ -137,9 +152,11 @@ function writeNextToCache(qc: QueryClient, next: NextTask, kept: ReadonlySet<ISO
   }
   for (const [key, data] of qc.getQueriesData<Task[]>({ queryKey: taskKeys.all })) {
     const list = listOfKey(key)
-    if (list?.kind !== 'day' || !data || kept.has(list.date)) continue
-    if (!occursOn(master.rule, start, master.until, list.date)) continue
-    qc.setQueryData(key, [...data, generatedOccurrence(master, list.date)])
+    if (!list || !data) continue
+    const added = datesOfList(list)
+      .filter((date) => !kept.has(date) && occursOn(master.rule, start, master.until, date))
+      .map((date) => generatedOccurrence(master, date))
+    if (added.length > 0) qc.setQueryData(key, [...data, ...added])
   }
 }
 
