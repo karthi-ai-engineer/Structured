@@ -138,9 +138,16 @@ describe('MCP server (real project)', () => {
       .single()
     expect(lunchRow.data?.start_time).toBe('12:30:00')
 
-    // Undo the whole creation: every created task is gone from the planner.
+    // Undo the creation. Deep work was completed and the idea got a subtask since, so a plain
+    // undo keeps those two (later changes are never lost silently) and removes only lunch.
     const undo = await call('undo_batch', { batch_id: created.data.batch_id })
-    expect(undo.summary).toContain('3 changes reverted')
+    expect(undo.data.reverted).toBe(1)
+    expect(undo.data.skipped.map((s: { id: string }) => s.id).sort()).toEqual(
+      [deep?.id, idea?.id].sort(),
+    )
+    // Forced, it removes them too, and the batch counts as undone.
+    const forced = await call('undo_batch', { batch_id: created.data.batch_id, force: true })
+    expect(forced.summary).toContain('Undid "Created 3 tasks"')
     expect((await call('get_schedule', { start_date: DAY })).data.days[0].timed).toEqual([])
     const batch = await admin
       .from('mcp_batches')
