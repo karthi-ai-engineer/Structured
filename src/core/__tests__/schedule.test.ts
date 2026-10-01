@@ -76,6 +76,13 @@ describe('findFreeSlots', () => {
     expect(findFreeSlots([{ start: 0, end: 1440 }], window, 1)).toEqual([])
   })
 
+  it('ignores zero-length tasks, which take no time', () => {
+    const busy = [{ start: 10 * 60, end: 10 * 60 }]
+    expect(findFreeSlots(busy, { start: 9 * 60, end: 12 * 60 }, 150)).toEqual([
+      { start: '09:00', end: '12:00', minutes: 180 },
+    ])
+  })
+
   it('reports a window that reaches midnight as ending at 24:00', () => {
     expect(findFreeSlots([], { start: 23 * 60, end: 1440 }, 30)).toEqual([
       { start: '23:00', end: '24:00', minutes: 60 },
