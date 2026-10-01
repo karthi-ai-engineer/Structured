@@ -10,6 +10,7 @@ import type { Database, Json, TablesUpdate } from '../src/data/database.types.ts
 import { isValidTimeZone, type ISODate } from '../src/core/dates.ts'
 import { taskFromRow, toStartTime } from '../src/core/rows.ts'
 import { expandSeriesRows, missingSeriesIds } from '../src/core/series.ts'
+import type { EnergyLevel } from '../src/core/energy.ts'
 import type { Subtask, Task, TaskColor } from '../src/core/tasks.ts'
 
 export type AdminDb = SupabaseClient<Database>
@@ -27,6 +28,8 @@ export interface StoreSettings {
   dayStart: string
   dayEnd: string
   defaultDuration: number
+  energyEnabled: boolean
+  energyLimit: number
 }
 
 export interface NewTask {
@@ -40,6 +43,9 @@ export interface NewTask {
   startTime: string | null
   durationMin: number
   isAllDay: boolean
+  energy: EnergyLevel | null
+  /** Alerts are set in the app only; Claude's tasks use the user's defaults. */
+  alerts: null
 }
 
 /** Column changes, in domain terms. `deletedAt` soft-deletes (a timestamp) or restores (null). */
@@ -53,6 +59,7 @@ export interface TaskChanges {
   startTime?: string | null
   durationMin?: number
   isAllDay?: boolean
+  energy?: EnergyLevel | null
   completedAt?: string | null
   deletedAt?: string | null
 }
@@ -139,6 +146,7 @@ function toUpdate(changes: TaskChanges, batchId: string | null): TablesUpdate<'t
   if (changes.startTime !== undefined) u.start_time = changes.startTime
   if (changes.durationMin !== undefined) u.duration_min = changes.durationMin
   if (changes.isAllDay !== undefined) u.is_all_day = changes.isAllDay
+  if (changes.energy !== undefined) u.energy = changes.energy
   if (changes.completedAt !== undefined) u.completed_at = changes.completedAt
   if (changes.deletedAt !== undefined) u.deleted_at = changes.deletedAt
   if (batchId !== null) u.batch_id = batchId
@@ -203,6 +211,8 @@ export function createSupabaseStore(db: AdminDb): TaskStore {
         dayStart: toStartTime(data?.day_start ?? null) ?? '07:00',
         dayEnd: toStartTime(data?.day_end ?? null) ?? '22:00',
         defaultDuration: data?.default_duration ?? 30,
+        energyEnabled: data?.energy_enabled ?? true,
+        energyLimit: data?.energy_limit ?? 30,
       }
     },
 
@@ -285,6 +295,7 @@ export function createSupabaseStore(db: AdminDb): TaskStore {
         start_time: t.startTime,
         duration_min: t.durationMin,
         is_all_day: t.isAllDay,
+        energy: t.energy,
         source: 'mcp',
         batch_id: batchId,
       }))

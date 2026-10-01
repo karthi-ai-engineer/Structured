@@ -17,6 +17,7 @@ import {
 } from '../../src/core/dates.ts'
 import { TASK_ICON_NAMES, toStoredIcon } from '../../src/core/icons.ts'
 import { OVERDUE_DAYS } from '../../src/core/calendar.ts'
+import { dayEnergy, taskPoints, toEnergyLevel, type EnergyLevel } from '../../src/core/energy.ts'
 import { parseOccurrenceId } from '../../src/core/series.ts'
 import {
   findFreeSlots,
@@ -73,6 +74,12 @@ const taskId = z.string().superRefine((id, ctx) => {
   })
 })
 const color = z.enum(COLOR_NAMES)
+const energy = z
+  .number()
+  .int()
+  .min(-1)
+  .max(3)
+  .describe('-1 relaxing, 0 neutral, 1 to 3 draining (the energy monitor)')
 const duration = z.number().int().min(0).max(1440)
 const title = z.string().trim().min(1).max(200)
 
@@ -100,15 +107,21 @@ function datesBetween(from: ISODate, to: ISODate): ISODate[] {
 }
 
 function asPlanned(
-  t: Pick<Task, 'title' | 'date' | 'startTime' | 'durationMin' | 'isAllDay'>,
-): PlannedTask {
+  t: Pick<Task, 'title' | 'date' | 'startTime' | 'durationMin' | 'isAllDay' | 'energy'>,
+): PlannedTask & { energy: EnergyLevel | null } {
   return {
     title: t.title,
     date: t.date,
     startTime: t.startTime,
     durationMin: t.durationMin,
     isAllDay: t.isAllDay,
+    energy: t.energy,
   }
+}
+
+/** A day's tasks, for its energy total. */
+function onDayAll(tasks: readonly Task[], date: ISODate): Task[] {
+  return tasks.filter((t) => t.date === date)
 }
 
 export function registerTools(server: McpServer, deps: ToolDeps): void {
@@ -218,6 +231,9 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
             timed: timed.map((t) => view(t)),
             free_slots: freeOn(date, open, window, today, nowMinutes, 15),
             overlaps: overlappingPairs(open),
+            ...(settings.energyEnabled
+              ? { energy: { used: dayEnergy(onDayAll(all, date)), limit: settings.energyLimit } }
+              : {}),
           }
         })
         const count = days.reduce((n, d) => n + d.all_day.length + d.timed.length, 0)
@@ -328,20 +344,27 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   /** Warnings for planned tasks, checked against the existing tasks on the same dates (only
    *  those dates are loaded) and against each other, in order. */
   async function warningsFor(
-    planned: readonly PlannedTask[],
+    planned: readonly (PlannedTask & { energy?: EnergyLevel | null })[],
     ignoreIds: ReadonlySet<string>,
   ): Promise<string[][]> {
     const { settings, today, nowMinutes } = await clock()
     const dates = planned.map((p) => p.date).filter((d): d is ISODate => d !== null)
     const existing = await store.listDates(dates)
-    const accepted: (PlannedTask & { completedAt: null })[] = []
+    const accepted: (PlannedTask & { completedAt: null; energy: EnergyLevel | null })[] = []
     return planned.map((p) => {
       const sameDay = [
         ...existing.filter((t) => t.date === p.date && !ignoreIds.has(t.id)),
         ...accepted.filter((t) => t.date === p.date),
       ]
       const warnings = plannedTaskWarnings(p, { sameDay, window: settings, today, nowMinutes })
-      accepted.push({ ...p, completedAt: null })
+      const mine = { ...p, completedAt: null, energy: p.energy ?? null }
+      if (settings.energyEnabled && p.date !== null && taskPoints(mine) > 0) {
+        const used = dayEnergy([...sameDay, mine])
+        if (used > settings.energyLimit) {
+          warnings.push(`Takes the day over its energy limit (${used}/${settings.energyLimit})`)
+        }
+      }
+      accepted.push(mine)
       return warnings
     })
   }
@@ -360,6 +383,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
       .describe('One of the icon names from get_context, or one emoji'),
     notes: z.string().max(5000).optional(),
     subtasks: z.array(title).max(50).optional(),
+    energy: energy.optional(),
   })
 
   server.registerTool(
@@ -395,6 +419,8 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
             startTime: date !== null && !isAllDay ? (t.start_time ?? null) : null,
             durationMin: t.duration_min ?? settings.defaultDuration,
             isAllDay,
+            energy: toEnergyLevel(t.energy),
+            alerts: null,
           }
           const problems = validateDraft(task)
           if (date === null && t.start_time !== undefined) {
@@ -533,6 +559,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         start_time: hhmm.nullable().optional(),
         duration_min: duration.optional(),
         all_day: z.boolean().optional(),
+        energy: energy.nullable().optional(),
       }),
     },
     (input) =>
@@ -556,6 +583,7 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
         if (input.start_time !== undefined) patch.startTime = input.start_time
         if (input.duration_min !== undefined) patch.durationMin = input.duration_min
         if (input.all_day !== undefined) patch.isAllDay = input.all_day
+        if (input.energy !== undefined) patch.energy = toEnergyLevel(input.energy)
         if (Object.keys(patch).length === 0) return fail('Pass at least one field to change.')
         const { merged, changes, problems } = scheduleChanges(task, patch)
         if (problems.length > 0) return fail('Nothing was changed.', { problems })
@@ -860,6 +888,7 @@ const FIELDS = [
   'startTime',
   'durationMin',
   'isAllDay',
+  'energy',
   'completedAt',
 ] as const
 type Field = (typeof FIELDS)[number]
