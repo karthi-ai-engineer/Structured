@@ -252,6 +252,32 @@ describe('applyPatch', () => {
   })
 })
 
+describe('belongsTo: ranges and the overdue list', () => {
+  it('a range holds its dates; overdue holds open one-off tasks before today', () => {
+    const range = { kind: 'range', from: '2026-09-28', to: '2026-10-04' } as const
+    expect(belongsTo(task({ date: '2026-09-28' }), range)).toBe(true)
+    expect(belongsTo(task({ date: '2026-10-05' }), range)).toBe(false)
+    expect(belongsTo(task({ date: null }), range)).toBe(false)
+    const overdue = { kind: 'overdue', since: '2026-09-17', before: '2026-10-01' } as const
+    expect(belongsTo(task({ date: '2026-09-30' }), overdue)).toBe(true)
+    expect(belongsTo(task({ date: '2026-10-01' }), overdue)).toBe(false)
+    expect(belongsTo(task({ date: '2026-09-16' }), overdue)).toBe(false)
+    expect(belongsTo(task({ date: '2026-09-30', completedAt: 'x' }), overdue)).toBe(false)
+    expect(belongsTo(task({ date: null }), overdue)).toBe(false)
+    const occurrence = task({
+      date: '2026-09-30',
+      recurrence: {
+        seriesId: 's',
+        occurrenceDate: '2026-09-30',
+        rule: { freq: 'daily', interval: 1, weekdays: [] },
+        start: '2026-09-01',
+        until: null,
+      },
+    })
+    expect(belongsTo(occurrence, overdue)).toBe(false)
+  })
+})
+
 describe('belongsTo', () => {
   it('matches day lists by date', () => {
     expect(belongsTo(task(), { kind: 'day', date: '2026-10-01' })).toBe(true)
