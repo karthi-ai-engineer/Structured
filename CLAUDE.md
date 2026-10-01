@@ -138,7 +138,16 @@ Enforced by ESLint (`eslint.config.js`, run by `npm run lint`) and, for `src/cor
   - Every task list is cached under `['tasks', …]`. `writeTaskToCache` moves a task across all cached lists (day ↔ inbox, delete).
   - Mutations roll back on failure with a notice, and always refetch on settle.
 - **Features** (`src/features/`): `shell` (layout, `QueryState`, `Fab`), `timeline` (day view, week strip, task rows, `useClock`), `editor` (one dialog for the whole app, opened with `useEditor()`), `inbox`, `settings` (with `ThemeSync`).
-- **Routes:** `/` (today), `/day/YYYY-MM-DD`, `/inbox` and `/settings`. Vercel's SPA rewrite serves them all.
+- **Routes:**
+  - `/` (today) and `/day/YYYY-MM-DD`
+  - `/week` and `/week/YYYY-MM-DD`
+  - `/month` and `/month/YYYY-MM`
+  - `/replan`, `/inbox` and `/settings`
+  - Vercel's SPA rewrite serves them all.
+- **Calendar (Phase 3):**
+  - `features/calendar` holds the week, month and Replan views, and the Day / Week / Month switch.
+  - Their lists are cached as `['tasks', 'range', from, to]` and `['tasks', 'overdue', today]` (`listOfKey`, `belongsTo`), so every optimistic write reaches them.
+  - `src/core/calendar.ts` holds the month grid, the tasks of each day, `fitIntoDay` (Replan's "Fit all into today") and `OVERDUE_DAYS`, which the MCP tools share.
 - **Phone versus desktop:** under `lg`, bottom tabs, a floating add button and a bottom-sheet editor. From `lg`, a sidebar and an inbox panel next to the timeline.
 - **Safety net:** `platform/unload.ts` asks before leaving the page while a mutation is pending.
 - **Timeline interactions (Phase 3):**

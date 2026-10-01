@@ -111,3 +111,29 @@
 - **Resize handle:** the small bar at the bottom of each pill.
 - **Phone:** press and hold a pill, then drag.
 - **Fixed during development:** the resize handle is small, so a fast mouse drag could leave it before the drag started. Mouse and pen pointers are now captured on press.
+
+## WP3: Week and month views, and Replan (2026-10-01)
+
+### What was done
+- **Week view** (`/week/:date`): seven days side by side on desktop, stacked on phones. Each task can be ticked or opened; each day has an add button and links to its day view.
+- **Month view** (`/month/:month`): a grid of six full weeks.
+  - Desktop shows up to three titles per day, then "+N more"; phones show colored dots.
+  - Tap a day to open it.
+- **Both views:** arrow keys step back and forward, `t` goes to today, and a Day / Week / Month switch keeps the date.
+- **Replan** (`/replan`): unfinished one-off tasks from the last 14 days (`OVERDUE_DAYS`, shared with the MCP tools), grouped by day.
+  - Per task: Today (the first free slot that fits), Tomorrow, Inbox, Done, Delete.
+  - "Fit all into today" fills today's free time, oldest first, and reports what does not fit.
+  - Today's timeline shows a banner when anything is unfinished.
+- **Data:**
+  - range and overdue lists in the cache, with membership rules in `belongsTo`
+  - `listOverdue` in the repository
+  - a split's new series shows at once in cached weeks and months too
+
+### Commands run
+- `npm run verify`
+- `npm run test:e2e`: the new `views.spec.ts` (day → week via the switch, complete from the week, month cell → day; Replan moves yesterday's task to today) and the whole suite
+
+### Notes for testers
+- **"Fit all into today"** moves every listed task. The e2e tests use only the per-task Today button, so real overdue tasks are never touched.
+- **Repeating tasks** are not listed in Replan: they come back on their own.
+
