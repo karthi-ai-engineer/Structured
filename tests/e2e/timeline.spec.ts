@@ -80,6 +80,15 @@ test('free time, overlaps, drag to move and resize, inbox to timeline', async ({
   await expect(row(a)).toContainText('(1h 30m)')
   await expect(page.getByLabel('Overlaps another task')).toHaveCount(0)
 
+  // After drags, a plain click still opens the task.
+  await row(b)
+    .getByRole('button', { name: `Open ${b}` })
+    .first()
+    .click()
+  await expect(dialog.getByLabel('Title')).toHaveValue(b)
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+
   // Desktop: drag an inbox task onto the free time after B.
   const inbox = page.getByRole('complementary').getByLabel('Add to inbox')
   const createdC = saved(page, c)

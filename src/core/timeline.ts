@@ -76,13 +76,18 @@ export function snapMinutes(minutes: number): number {
 
 /** A dragged start time: snapped, and kept on the same day. */
 export function movedStart(startTime: string, deltaMinutes: number): string {
-  const next = toMinutes(startTime) + snapMinutes(deltaMinutes)
+  const delta = snapMinutes(deltaMinutes)
+  if (delta === 0) return startTime
+  const next = toMinutes(startTime) + delta
   return fromMinutes(Math.min(Math.max(next, 0), 1440 - SNAP_MINUTES))
 }
 
-/** A dragged duration: snapped, at least one snap step, at most a day. */
+/** A dragged duration: snapped, at least one snap step, at most a day. A drag that ends where
+ *  it started keeps the duration (a 0-minute reminder stays 0). */
 export function resizedDuration(durationMin: number, deltaMinutes: number): number {
-  return Math.min(Math.max(durationMin + snapMinutes(deltaMinutes), SNAP_MINUTES), 1440)
+  const delta = snapMinutes(deltaMinutes)
+  if (delta === 0) return durationMin
+  return Math.min(Math.max(durationMin + delta, SNAP_MINUTES), 1440)
 }
 
 /** The editor warnings worth showing while planning: overlaps, day hours and midnight. The

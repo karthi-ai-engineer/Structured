@@ -94,6 +94,13 @@ describe('drag maths', () => {
     expect(resizedDuration(30, -60)).toBe(5)
     expect(resizedDuration(1400, 100)).toBe(1440)
   })
+
+  it('a drag that ends where it started changes nothing (a 0-minute task stays 0)', () => {
+    expect(resizedDuration(0, 2)).toBe(0)
+    expect(resizedDuration(0, -2)).toBe(0)
+    expect(resizedDuration(0, 5)).toBe(5)
+    expect(movedStart('09:02', 1)).toBe('09:02')
+  })
 })
 
 describe('editorWarnings', () => {
