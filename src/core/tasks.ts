@@ -2,8 +2,8 @@
  * Task domain model and pure timeline logic (PLAN.md sections 3.1, 8 and 9.2).
  *
  * A task with `date === null` lives in the inbox. A dated task is either timed (`startTime` set,
- * not all-day) or sits in the all-day row (`isAllDay`, or no start time). Recurring series and
- * their overrides arrive in Phase 3; Phase 1 only reads plain one-off rows.
+ * not all-day) or sits in the all-day row (`isAllDay`, or no start time). An occurrence of a
+ * recurring series carries its `recurrence` (see series.ts); every other task has null.
  */
 
 import {
@@ -14,6 +14,7 @@ import {
   toMinutes,
   type ISODate,
 } from './dates.ts'
+import type { RepeatRule } from './recurrence.ts'
 
 export const TASK_COLORS = [
   { name: 'coral', hex: '#FF6B6B' },
@@ -44,7 +45,20 @@ export interface Subtask {
   done: boolean
 }
 
+/** Where an occurrence of a recurring series comes from. */
+export interface Recurrence {
+  seriesId: string
+  /** The date the rule produced; it stays the same when the occurrence is moved. */
+  occurrenceDate: ISODate
+  rule: RepeatRule
+  /** The series' first date. */
+  start: ISODate
+  /** The series' last possible date (inclusive), or null for no end. */
+  until: ISODate | null
+}
+
 export interface Task {
+  /** A UUID, or `<seriesId>:<occurrenceDate>` for an occurrence of a recurring series. */
   id: string
   title: string
   notes: string | null
@@ -62,6 +76,7 @@ export interface Task {
   inboxOrder: number
   createdAt: string
   updatedAt: string
+  recurrence: Recurrence | null
 }
 
 /** The fields a user edits. */
