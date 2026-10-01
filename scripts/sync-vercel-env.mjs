@@ -44,6 +44,9 @@ export const MATRIX = Object.freeze([
   // Phase 2: the MCP connector's path secret. Secret in production; Config in development so
   // `vercel env pull` restores it on a new machine.
   { key: 'MCP_SECRET', production: 'secret', development: 'config' },
+  // Phase 3: the key that encrypts the nightly backups (also a GitHub secret). Config in
+  // development so `vercel env pull` brings it to every machine that may need to decrypt.
+  { key: 'BACKUP_PASSPHRASE', development: 'config' },
 ])
 
 /** The matrix as rows: one per (variable, target). */
