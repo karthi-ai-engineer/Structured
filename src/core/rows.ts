@@ -52,5 +52,6 @@ export function taskFromRow(row: TaskRowShape): Task {
     inboxOrder: row.inbox_order,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    recurrence: null,
   }
 }

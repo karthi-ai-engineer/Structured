@@ -37,6 +37,7 @@ function task(overrides: Partial<Task> = {}): Task {
     inboxOrder: 0,
     createdAt: '2026-09-30T00:00:00.000Z',
     updatedAt: '2026-09-30T00:00:00.000Z',
+    recurrence: null,
     ...overrides,
   }
 }

@@ -29,9 +29,10 @@ function subtasksJson(subtasks: TaskDraft['subtasks']): Json {
   return subtasks.map((s) => ({ id: s.id, title: s.title, done: s.done }))
 }
 
-export function draftToInsert(id: string, draft: TaskDraft): TablesInsert<'tasks'> {
+/** The insert row for a draft; without an `id` the database generates one. */
+export function draftToInsert(id: string | undefined, draft: TaskDraft): TablesInsert<'tasks'> {
   return {
-    id,
+    ...(id === undefined ? {} : { id }),
     title: draft.title,
     notes: draft.notes,
     icon: draft.icon,

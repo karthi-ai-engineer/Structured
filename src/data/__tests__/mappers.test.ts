@@ -130,6 +130,7 @@ describe('settings mapping', () => {
     week_start: 0,
     day_start: '06:30:00',
     day_end: '23:00:00',
+    seeded_at: null,
     default_duration: 45,
     default_alerts: [0],
     energy_enabled: true,

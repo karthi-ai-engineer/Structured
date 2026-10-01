@@ -1,5 +1,6 @@
 // An in-memory TaskStore for unit tests: same contract as the Supabase store.
 import type { ISODate } from '../../src/core/dates.ts'
+import { expandSeriesRows, type SeriesRowShape } from '../../src/core/series.ts'
 import type { Task } from '../../src/core/tasks.ts'
 import {
   ROW_NOT_FOUND,
@@ -45,6 +46,7 @@ export class MemoryStore implements TaskStore {
       inboxOrder: 0,
       createdAt: '2099-01-01T00:00:00.000Z',
       updatedAt: '2099-01-01T00:00:00.000Z',
+      recurrence: null,
       deletedAt: null,
       batchId: null,
       source: 'app',
@@ -74,6 +76,7 @@ export class MemoryStore implements TaskStore {
       inboxOrder: r.inboxOrder,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
+      recurrence: r.recurrence,
     }
   }
 
@@ -81,12 +84,16 @@ export class MemoryStore implements TaskStore {
     return Promise.resolve({ ...this.settings })
   }
 
+  /** Recurring series and override rows, in database shape (expanded on read). */
+  seriesRows: SeriesRowShape[] = []
+
   listRange(from: ISODate, to: ISODate): Promise<Task[]> {
-    return Promise.resolve(
-      this.live()
+    return Promise.resolve([
+      ...this.live()
         .filter((r) => r.date !== null && r.date >= from && r.date <= to)
         .map((r) => MemoryStore.task(r)),
-    )
+      ...expandSeriesRows(this.seriesRows, from, to),
+    ])
   }
 
   listInbox(limit: number): Promise<Task[]> {
@@ -125,10 +132,15 @@ export class MemoryStore implements TaskStore {
 
   listDates(dates: readonly ISODate[]): Promise<Task[]> {
     const wanted = new Set(dates)
+    const sorted = [...wanted].sort()
+    const repeating =
+      sorted.length === 0
+        ? []
+        : expandSeriesRows(this.seriesRows, sorted[0] ?? '', sorted[sorted.length - 1] ?? '')
     return Promise.resolve(
-      this.live()
-        .filter((r) => r.date !== null && wanted.has(r.date))
-        .map((r) => MemoryStore.task(r)),
+      [...this.live().map((r) => MemoryStore.task(r)), ...repeating].filter(
+        (t) => t.date !== null && wanted.has(t.date),
+      ),
     )
   }
 
@@ -158,6 +170,7 @@ export class MemoryStore implements TaskStore {
           inboxOrder: 0,
           createdAt: '2099-03-10T00:00:00.000Z',
           updatedAt: '2099-03-10T00:00:00.000Z',
+          recurrence: null,
           deletedAt: null,
           batchId,
           source: 'mcp',

@@ -1,11 +1,15 @@
 // The MCP server's data access: tasks, settings and undo batches in Supabase, through the secret
-// key (server only). Plain one-off tasks only, like the app in Phase 1: recurring series arrive in
-// Phase 3. Every error surfaces as a short code, never a server message.
+// key (server only). Every error surfaces as a short code, never a server message.
+//
+// Recurring tasks (src/core/series.ts): schedule reads (`listRange`, `listDates`) include their
+// occurrences, so plans, free slots and overlap warnings account for them. Everything else reads
+// one-off tasks only: occurrences cannot be changed through the connector yet.
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Database, Json, TablesUpdate } from '../src/data/database.types.ts'
 import { isValidTimeZone, type ISODate } from '../src/core/dates.ts'
 import { taskFromRow, toStartTime } from '../src/core/rows.ts'
+import { expandSeriesRows, missingSeriesIds } from '../src/core/series.ts'
 import type { Subtask, Task, TaskColor } from '../src/core/tasks.ts'
 
 export type AdminDb = SupabaseClient<Database>
@@ -83,12 +87,13 @@ export interface SearchOptions {
 
 export interface TaskStore {
   getSettings(): Promise<StoreSettings>
+  /** Tasks dated from..to, including occurrences of recurring tasks. */
   listRange(from: ISODate, to: ISODate): Promise<Task[]>
   listInbox(limit: number): Promise<Task[]>
   /** Open tasks dated from `since` up to the day before `before`. */
   listOpenBefore(before: ISODate, since: ISODate): Promise<Task[]>
   search(query: string, options: SearchOptions): Promise<Task[]>
-  /** Live tasks on exactly these dates (for warnings). */
+  /** Live tasks on exactly these dates, including occurrences (for warnings). */
   listDates(dates: readonly ISODate[]): Promise<Task[]>
   /** Tasks by id; soft-deleted ones only when asked (undo needs them). */
   getMany(ids: readonly string[], includeDeleted?: boolean): Promise<Task[]>
@@ -155,6 +160,33 @@ export function searchPattern(query: string): string | null {
 export function createSupabaseStore(db: AdminDb): TaskStore {
   const plain = () => db.from('tasks').select('*').is('repeat_rule', null).is('series_id', null)
   const live = () => plain().is('deleted_at', null)
+  const liveAny = () => db.from('tasks').select('*').is('deleted_at', null)
+
+  /** Occurrences dated from..to: the series active then, plus overrides from or moved into it. */
+  async function occurrences(from: ISODate, to: ISODate): Promise<Task[]> {
+    const [series, overrides] = await Promise.all([
+      liveAny()
+        .not('repeat_rule', 'is', null)
+        .is('series_id', null)
+        .lte('date', to)
+        .or(`repeat_until.is.null,repeat_until.gte.${from}`),
+      liveAny()
+        .not('series_id', 'is', null)
+        .or(
+          `and(occurrence_date.gte.${from},occurrence_date.lte.${to}),and(date.gte.${from},date.lte.${to})`,
+        ),
+    ])
+    if (series.error) fail(series.error, series.status)
+    if (overrides.error) fail(overrides.error, overrides.status)
+    const rows = [...series.data, ...overrides.data]
+    const missing = missingSeriesIds(rows)
+    if (missing.length > 0) {
+      const extra = await liveAny().not('repeat_rule', 'is', null).in('id', missing)
+      if (extra.error) fail(extra.error, extra.status)
+      rows.push(...extra.data)
+    }
+    return expandSeriesRows(rows, from, to)
+  }
 
   return {
     async getSettings() {
@@ -175,9 +207,12 @@ export function createSupabaseStore(db: AdminDb): TaskStore {
     },
 
     async listRange(from, to) {
-      const { data, error, status } = await live().gte('date', from).lte('date', to)
+      const [{ data, error, status }, repeating] = await Promise.all([
+        live().gte('date', from).lte('date', to),
+        occurrences(from, to),
+      ])
       if (error) fail(error, status)
-      return data.map(taskFromRow)
+      return [...data.map(taskFromRow), ...repeating]
     },
 
     async listInbox(limit) {
@@ -218,9 +253,16 @@ export function createSupabaseStore(db: AdminDb): TaskStore {
 
     async listDates(dates) {
       if (dates.length === 0) return []
-      const { data, error, status } = await live().in('date', [...new Set(dates)])
+      const wanted = [...new Set(dates)].sort()
+      const [{ data, error, status }, repeating] = await Promise.all([
+        live().in('date', wanted),
+        occurrences(wanted[0] ?? '', wanted[wanted.length - 1] ?? ''),
+      ])
       if (error) fail(error, status)
-      return data.map(taskFromRow)
+      return [
+        ...data.map(taskFromRow),
+        ...repeating.filter((t) => t.date !== null && wanted.includes(t.date)),
+      ]
     },
 
     async getMany(ids, includeDeleted = false) {
