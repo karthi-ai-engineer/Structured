@@ -64,3 +64,28 @@
   - two live-database tests: the "all" rename keeps a moved occurrence's own time; an end-date change keeps a cancelled day; a weekly series moved a day later carries its completed occurrence
   - `npm run verify`: 937 tests
 
+## WP2: Timeline interactions (2026-10-01)
+
+### What was done
+- **Free time (T8):** rows between tasks inside the day hours, from 15 minutes up.
+  - Past free time is hidden today and on past days.
+  - A tap opens the editor at that time, with the default duration capped to the gap.
+- **Overlaps (T9):** a warning icon on overlapping tasks. The editor shows non-blocking warnings (overlaps, outside the day hours, past midnight) while you plan.
+- **Drag (T10):** drag a task's pill to move it, and its bottom edge to resize it, in 5-minute steps. The time labels update live.
+  - Mouse: after 4 px.
+  - Touch: after a 350 ms long press; a quick swipe still scrolls.
+  - A drag on a recurring occurrence changes only that occurrence.
+- **Inbox to timeline (T11, desktop):** drag an inbox item onto free time (it starts there) or onto an empty day.
+
+### Commands run
+- `npm run verify`
+- `npm run test:e2e`:
+  - the new `timeline.spec.ts`: free time → add, overlap warnings and icons, drag to move, drag to resize, inbox drag
+  - a touch long-press drag in `mobile.spec.ts`
+  - the whole suite
+
+### Notes for testers
+- **Resize handle:** the small bar at the bottom of each pill.
+- **Phone:** press and hold a pill, then drag.
+- **Fixed during development:** the resize handle is small, so a fast mouse drag could leave it before the drag started. Mouse and pen pointers are now captured on press.
+
