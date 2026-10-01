@@ -67,6 +67,8 @@ describe('task mapping', () => {
       isAllDay: false,
       energy: null,
       alerts: null,
+      priority: null,
+      dueDate: null,
     })
     expect(insert).toMatchObject({ id: 't2', title: 'Read', date: null, source: 'app' })
     expect(insert.subtasks).toEqual([])
@@ -87,12 +89,16 @@ describe('task mapping', () => {
         isAllDay: true,
         energy: null,
         alerts: null,
+        priority: null,
+        dueDate: null,
         completedAt: '2026-10-02T08:00:00Z',
       }),
     ).toEqual({
       title: 'A',
       energy: null,
       alerts: null,
+      priority: null,
+      due_date: null,
       notes: null,
       icon: 'sun',
       color: 'teal',

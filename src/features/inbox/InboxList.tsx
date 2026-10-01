@@ -1,17 +1,23 @@
 import { useState, type FormEvent } from 'react'
 import { CalendarPlus } from 'lucide-react'
-import { formatDuration, nowMinutesIn, todayIn } from '@/core/dates'
+import { formatDateLabel, formatDuration, nowMinutesIn, todayIn } from '@/core/dates'
 import {
   DEFAULT_TASK_COLOR,
   colorHex,
   nextStartTime,
   normalizeTitle,
   sortInbox,
+  type TaskDraft,
 } from '@/core/tasks'
 import { TaskIcon } from '@/components/TaskIcon'
+import { TaskMeta } from '@/components/TaskMeta'
 import { Input } from '@/components/ui/input'
 import { useAppSettings } from '@/data/queries/settings'
-import { useInboxTasks, useTaskActions } from '@/data/queries/tasks'
+import { useCachedTasks, useInboxTasks, useTaskActions } from '@/data/queries/tasks'
+import { parseQuickAdd } from '@/core/quickadd'
+import { suggestStyle } from '@/core/suggest'
+import { withQuickAdd } from '@/features/editor/quickAddDraft'
+import { notify } from '@/stores/notices'
 import { useEditor } from '@/features/editor/editorContext'
 import { QueryState } from '@/features/shell/QueryState'
 import { taskDrag } from '@/features/timeline/taskDrag'
@@ -23,13 +29,16 @@ export function InboxList() {
   const query = useInboxTasks()
   const actions = useTaskActions()
   const editor = useEditor()
+  const history = useCachedTasks()
   const [title, setTitle] = useState('')
 
   function quickAdd(event: FormEvent) {
     event.preventDefault()
-    const clean = normalizeTitle(title)
+    const today = todayIn(settings.timezone)
+    const quick = parseQuickAdd(title, today)
+    const clean = normalizeTitle(quick.title)
     if (!clean) return
-    actions.create(crypto.randomUUID(), {
+    const base: TaskDraft = {
       title: clean,
       notes: null,
       icon: null,
@@ -41,7 +50,22 @@ export function InboxList() {
       isAllDay: false,
       energy: null,
       alerts: null,
+      priority: null,
+      dueDate: null,
+    }
+    // Quick-add syntax (T15) can schedule it; the icon and color follow the title (T16).
+    const draft = withQuickAdd(base, { ...quick, title: clean }, today)
+    const style = suggestStyle(clean, history)
+    actions.create(crypto.randomUUID(), {
+      ...draft,
+      icon: style.icon ?? draft.icon,
+      color: style.color ?? draft.color,
     })
+    if (draft.date !== null) {
+      notify(
+        `Added "${clean}" to ${draft.date === today ? 'today' : formatDateLabel(draft.date, 'EEE d MMM')}`,
+      )
+    }
     setTitle('')
   }
 
@@ -52,7 +76,7 @@ export function InboxList() {
       <form onSubmit={quickAdd}>
         <Input
           aria-label="Add to inbox"
-          placeholder="Add to inbox and press Enter"
+          placeholder="Add a task: Gym tomorrow 7am 1h"
           value={title}
           maxLength={200}
           onChange={(e) => setTitle(e.target.value)}
@@ -88,8 +112,9 @@ export function InboxList() {
                   className="min-w-0 flex-1 py-2 text-left"
                 >
                   <span className="block truncate">{task.title}</span>
-                  <span className="block text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     {formatDuration(task.durationMin)}
+                    <TaskMeta task={task} today={todayIn(settings.timezone)} />
                   </span>
                 </button>
                 <button
@@ -97,10 +122,15 @@ export function InboxList() {
                   aria-label={`Schedule for today: ${task.title}`}
                   title="Schedule for today"
                   onClick={() =>
-                    actions.update(task, {
-                      date: todayIn(settings.timezone),
-                      startTime: nextStartTime(nowMinutesIn(settings.timezone)),
-                    })
+                    actions.update(
+                      task,
+                      {
+                        date: todayIn(settings.timezone),
+                        startTime: nextStartTime(nowMinutesIn(settings.timezone)),
+                      },
+                      null,
+                      { undo: `Scheduled "${task.title}" for today` },
+                    )
                   }
                   className="rounded-md p-2 text-muted-foreground hover:bg-muted"
                 >

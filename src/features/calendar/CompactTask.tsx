@@ -1,17 +1,20 @@
 import { Check, Repeat } from 'lucide-react'
 import { formatTime, toMinutes, type TimeFormat } from '@/core/dates'
 import { colorHex, isAllDayLike, type Task } from '@/core/tasks'
+import { TaskMeta } from '@/components/TaskMeta'
 import { cn } from '@/lib/utils'
 
 /** A one-line task for the week view: check, time and title. */
 export function CompactTask({
   task,
   timeFormat,
+  today,
   onOpen,
   onToggle,
 }: {
   task: Task
   timeFormat: TimeFormat
+  today: string
   onOpen: (task: Task) => void
   onToggle: (task: Task) => void
 }) {
@@ -45,7 +48,8 @@ export function CompactTask({
             : formatTime(toMinutes(task.startTime), timeFormat)}
           {task.recurrence ? (
             <Repeat aria-label="Repeats" className="ml-1 inline size-2.5 align-[-1px]" />
-          ) : null}
+          ) : null}{' '}
+          <TaskMeta task={task} today={today} />
         </span>
         <span className={cn('truncate text-sm', done && 'text-muted-foreground line-through')}>
           {task.title}

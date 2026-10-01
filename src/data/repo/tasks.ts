@@ -4,9 +4,16 @@
 // occurrences that differ, and day lists expand both into occurrences. Writes for one
 // occurrence upsert its override; "this and future" runs the `split_series` database function,
 // so it is atomic.
-import { nowIso, type ISODate } from '@/core/dates'
+import { addDays, nowIso, type ISODate } from '@/core/dates'
+import { occurrencesIn } from '@/core/recurrence'
+import { searchPattern } from '@/core/search'
 import { formatRule } from '@/core/recurrence'
-import { expandSeriesRows, missingSeriesIds } from '@/core/series'
+import {
+  expandSeriesRows,
+  generatedOccurrence,
+  masterFromRow,
+  missingSeriesIds,
+} from '@/core/series'
 import { sharedPatch, type NextTask, type RepeatSpec, type SeriesWrite } from '@/core/seriesEdits'
 import type { Task, TaskDraft, TaskPatch } from '@/core/tasks'
 import type { Json, TablesUpdate } from '@/data/database.types'
@@ -39,8 +46,15 @@ export interface TasksRepo {
   /** A one-off task; `repeat` turns it into a series. */
   update(id: string, patch: TaskPatch, repeat?: RepeatSpec | null): Promise<void>
   remove(id: string): Promise<void>
+  /** Undoes a soft delete. */
+  restore(id: string): Promise<void>
   /** Executes an edit or delete of a recurring occurrence (src/core/seriesEdits.ts). */
   applySeriesWrite(write: SeriesWrite): Promise<void>
+  /**
+   * Tasks whose title or notes contain `query` (PLAN.md T17): one-off tasks (newest date first,
+   * inbox included) and, for repeating series, their next occurrence from `today`.
+   */
+  search(query: string, today: ISODate): Promise<Task[]>
   /** Creates the default daily series once; true when this call created them. */
   seedDefaults(today: ISODate, rise: string, wind: string): Promise<boolean>
 }
@@ -178,6 +192,10 @@ export function createTasksRepo(db: Db): TasksRepo {
       await check(db.from('tasks').update({ deleted_at: nowIso() }).eq('id', id))
     },
 
+    async restore(id) {
+      await check(db.from('tasks').update({ deleted_at: null }).eq('id', id))
+    },
+
     async applySeriesWrite(write) {
       switch (write.kind) {
         case 'occurrence':
@@ -211,6 +229,32 @@ export function createTasksRepo(db: Db): TasksRepo {
           )
           return
       }
+    },
+
+    async search(query, today) {
+      const pattern = searchPattern(query)
+      if (pattern === null) return []
+      const match = `title.ilike.${pattern},notes.ilike.${pattern}`
+      const [found, series] = await Promise.all([
+        plain().or(match).order('date', { ascending: false, nullsFirst: true }).limit(50),
+        live().not('repeat_rule', 'is', null).is('series_id', null).or(match).limit(20),
+      ])
+      if (found.error) fail(found.status, found.error)
+      if (series.error) fail(series.status, series.error)
+      const next = series.data.flatMap((row) => {
+        const master = masterFromRow(row)
+        if (!master) return []
+        const from = today > master.task.date ? today : master.task.date
+        const [date] = occurrencesIn(
+          master.rule,
+          master.task.date,
+          master.until,
+          from,
+          addDays(from, 400),
+        )
+        return date ? [generatedOccurrence(master, date)] : []
+      })
+      return [...next, ...found.data.map(rowToTask)]
     },
 
     async seedDefaults(today, rise, wind) {

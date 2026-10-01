@@ -2,8 +2,8 @@ import { useSyncExternalStore } from 'react'
 import { X } from 'lucide-react'
 import { dismiss, getNotices, subscribe } from '@/stores/notices'
 
-/** Short error messages, bottom center, above the mobile tab bar. The live region is always
- *  mounted, so screen readers announce the first message too. */
+/** Short messages (errors, and undo offers), bottom center, above the mobile tab bar. The live
+ *  region is always mounted, so screen readers announce the first message too. */
 export function Notices() {
   const notices = useSyncExternalStore(subscribe, getNotices, getNotices)
   return (
@@ -18,6 +18,18 @@ export function Notices() {
           className="pointer-events-auto flex max-w-sm items-center gap-3 rounded-lg bg-foreground px-4 py-2 text-sm text-background shadow-lg"
         >
           <span>{n.message}</span>
+          {n.action ? (
+            <button
+              type="button"
+              className="rounded px-2 py-1 font-semibold underline-offset-2 hover:bg-background/20"
+              onClick={() => {
+                n.action?.run()
+                dismiss(n.id)
+              }}
+            >
+              {n.action.label}
+            </button>
+          ) : null}
           <button
             type="button"
             aria-label="Dismiss"

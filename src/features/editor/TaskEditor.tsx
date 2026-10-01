@@ -1,6 +1,17 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router'
-import { AlertTriangle, Check, Inbox, Plus, Repeat, Timer, Trash2, X } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  Copy,
+  Flag,
+  Inbox,
+  Plus,
+  Repeat,
+  Timer,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { formatDuration, nowMinutesIn, todayIn } from '@/core/dates'
 import { plannedTaskWarnings } from '@/core/schedule'
 import { editorWarnings } from '@/core/timeline'
@@ -11,6 +22,7 @@ import {
   colorHex,
   firstEmoji,
   nextStartTime,
+  PRIORITIES,
   normalizeTitle,
   validateDraft,
   type Subtask,
@@ -25,7 +37,12 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAppSettings } from '@/data/queries/settings'
-import { useDayTasks, useTaskActions } from '@/data/queries/tasks'
+import { newTask, useCachedTasks, useDayTasks, useTaskActions } from '@/data/queries/tasks'
+import { parseQuickAdd } from '@/core/quickadd'
+import { suggestStyle } from '@/core/suggest'
+import { nowIso } from '@/core/dates'
+import { quickAddLabels, withQuickAdd } from '@/features/editor/quickAddDraft'
+import { useEditor } from '@/features/editor/editorContext'
 import type { EditorRequest } from '@/features/editor/editorContext'
 import { AlertsField, EnergyField } from '@/features/editor/EnergyAlertsFields'
 import { RepeatField } from '@/features/editor/RepeatField'
@@ -51,6 +68,8 @@ function initialDraft(request: EditorRequest, defaultDuration: number): TaskDraf
       isAllDay,
       energy,
       alerts,
+      priority,
+      dueDate,
     } = request.task
     return {
       title,
@@ -64,6 +83,8 @@ function initialDraft(request: EditorRequest, defaultDuration: number): TaskDraf
       isAllDay,
       energy,
       alerts,
+      priority,
+      dueDate,
     }
   }
   return {
@@ -78,6 +99,8 @@ function initialDraft(request: EditorRequest, defaultDuration: number): TaskDraf
     isAllDay: false,
     energy: null,
     alerts: null,
+    priority: null,
+    dueDate: null,
     ...request.defaults,
   }
 }
@@ -92,6 +115,8 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
   const settings = useAppSettings()
   const actions = useTaskActions()
   const navigate = useNavigate()
+  const editor = useEditor()
+  const history = useCachedTasks()
   const [draft, setDraft] = useState<TaskDraft>(() =>
     initialDraft(request, settings.defaultDuration),
   )
@@ -105,6 +130,29 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
   const set = (patch: Partial<TaskDraft>) => setDraft((d) => ({ ...d, ...patch }))
   const today = todayIn(settings.timezone)
   const editing = request.mode === 'edit' ? request.task : null
+  // New tasks: quick-add syntax in the title (T15), and an icon and color that follow the title
+  // (T16) until one is picked by hand.
+  const quick = editing ? null : parseQuickAdd(draft.title, today)
+  const [stylePicked, setStylePicked] = useState(editing !== null)
+  const pick = (patch: Partial<TaskDraft>) => {
+    setStylePicked(true)
+    set(patch)
+  }
+  function effectiveDraft(d: TaskDraft): TaskDraft {
+    if (!quick) return d
+    const parsed = withQuickAdd(d, quick, today)
+    if (stylePicked) return parsed
+    const suggestion = suggestStyle(parsed.title, history)
+    return {
+      ...parsed,
+      icon: suggestion.icon ?? parsed.icon,
+      color: suggestion.color ?? parsed.color,
+    }
+  }
+  /** Moves what quick add recognised from the title into the fields. */
+  function applyQuickAdd() {
+    if (quick && quick.found.length > 0) setDraft((d) => withQuickAdd(d, quick, today))
+  }
   const occurrence = editing?.recurrence ? editing : null
   const [repeat, setRepeat] = useState<RepeatState>(() =>
     initialRepeat(editing, draft.date ?? today),
@@ -114,17 +162,18 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
     null,
   )
 
-  const start = draft.date ?? today
-  const repeatSpec = draft.date === null ? null : repeatSpecOf(repeat, start)
+  const shown = effectiveDraft(draft)
+  const start = shown.date ?? today
+  const repeatSpec = shown.date === null ? null : repeatSpecOf(repeat, start)
   const repeating = repeatSpec !== null
-  const problems = [...validateDraft(draft), ...repeatProblems(repeat, start)]
+  const problems = [...validateDraft(shown), ...repeatProblems(repeat, start)]
   // Overlaps, day hours and midnight: shown while planning, never blocking the save.
   const sameDay = useDayTasks(start).data ?? []
   const warnings =
-    draft.date === null || problems.length > 0
+    shown.date === null || problems.length > 0
       ? []
       : editorWarnings(
-          plannedTaskWarnings(draft, {
+          plannedTaskWarnings(shown, {
             sameDay: sameDay.filter((t) => t.id !== editing?.id),
             window: settings,
             today,
@@ -133,16 +182,25 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
         )
   const isEdit = request.mode === 'edit'
   const scheduled = draft.date !== null
-  const accent = colorHex(draft.color)
+  const accent = colorHex(shown.color)
 
   function cleanDraft(): TaskDraft {
+    const d = effectiveDraft(draft)
     return {
-      ...draft,
-      title: normalizeTitle(draft.title),
-      notes: draft.notes?.trim() ? draft.notes.trim() : null,
-      startTime: draft.date === null || draft.isAllDay ? null : draft.startTime,
-      isAllDay: draft.date !== null && draft.isAllDay,
+      ...d,
+      title: normalizeTitle(d.title),
+      notes: d.notes?.trim() ? d.notes.trim() : null,
+      startTime: d.date === null || d.isAllDay ? null : d.startTime,
+      isAllDay: d.date !== null && d.isAllDay,
     }
+  }
+
+  /** A copy of this task (T22), opened at once so it can go to another day. */
+  function duplicate() {
+    const copy = { ...cleanDraft(), subtasks: draft.subtasks.map((s) => ({ ...s, done: false })) }
+    const id = crypto.randomUUID()
+    actions.create(id, copy)
+    editor.openEdit(newTask(id, copy, nowIso()))
   }
 
   function save(event?: FormEvent) {
@@ -222,7 +280,7 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
               className="flex size-11 shrink-0 items-center justify-center rounded-full text-white"
               style={{ backgroundColor: accent }}
             >
-              <TaskIcon icon={draft.icon} />
+              <TaskIcon icon={shown.icon} />
             </button>
             <Input
               autoFocus
@@ -231,9 +289,22 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
               value={draft.title}
               maxLength={200}
               onChange={(e) => set({ title: e.target.value })}
+              onBlur={applyQuickAdd}
               className="h-11 text-base"
             />
           </div>
+          {quick && quick.found.length > 0 ? (
+            <ul aria-label="Recognised" className="-mt-3 flex flex-wrap gap-1.5 pl-14">
+              {quickAddLabels(quick, today).map((label) => (
+                <li
+                  key={label}
+                  className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+                >
+                  {label}
+                </li>
+              ))}
+            </ul>
+          ) : null}
 
           {showIcons ? (
             <div className="flex flex-col gap-2">
@@ -243,14 +314,14 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                     key={name}
                     type="button"
                     aria-label={`Icon ${name}`}
-                    aria-pressed={(draft.icon ?? DEFAULT_ICON) === name}
+                    aria-pressed={(shown.icon ?? DEFAULT_ICON) === name}
                     onClick={() => {
-                      set({ icon: name })
+                      pick({ icon: name })
                       setShowIcons(false)
                     }}
                     className={cn(
                       'flex aspect-square items-center justify-center rounded-md hover:bg-muted',
-                      (draft.icon ?? DEFAULT_ICON) === name && 'bg-muted ring-2 ring-ring',
+                      (shown.icon ?? DEFAULT_ICON) === name && 'bg-muted ring-2 ring-ring',
                     )}
                   >
                     <TaskIcon icon={name} className="size-4" />
@@ -263,7 +334,7 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                 defaultValue={draft.icon !== null && !TASK_ICONS[draft.icon] ? draft.icon : ''}
                 onChange={(e) => {
                   const emoji = firstEmoji(e.target.value)
-                  if (emoji) set({ icon: emoji })
+                  if (emoji) pick({ icon: emoji })
                 }}
               />
             </div>
@@ -276,12 +347,12 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                 key={c.name}
                 type="button"
                 aria-label={`Color ${c.name}`}
-                aria-pressed={draft.color === c.name}
-                onClick={() => set({ color: c.name })}
+                aria-pressed={shown.color === c.name}
+                onClick={() => pick({ color: c.name })}
                 className="flex size-8 items-center justify-center rounded-full"
                 style={{ backgroundColor: c.hex }}
               >
-                {draft.color === c.name ? <Check className="size-4 text-white" /> : null}
+                {shown.color === c.name ? <Check className="size-4 text-white" /> : null}
               </button>
             ))}
           </fieldset>
@@ -402,8 +473,38 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
           )}
 
           {settings.energyEnabled ? (
-            <EnergyField value={draft.energy} onChange={(energy) => set({ energy })} />
+            <EnergyField value={shown.energy} onChange={(energy) => set({ energy })} />
           ) : null}
+
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-2 flex items-center gap-2 text-sm font-medium">
+              <Flag className="size-4" /> Priority and due date
+            </legend>
+            <div className="flex flex-wrap items-center gap-2">
+              {PRIORITIES.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  aria-pressed={shown.priority === p.value}
+                  aria-label={`Priority: ${p.label}`}
+                  onClick={() => set({ priority: shown.priority === p.value ? null : p.value })}
+                  className={cn(
+                    'min-h-9 rounded-full border px-3 text-sm',
+                    shown.priority === p.value ? 'border-foreground bg-muted' : 'hover:bg-muted',
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+              <Input
+                type="date"
+                aria-label="Due date"
+                value={draft.dueDate ?? ''}
+                onChange={(e) => set({ dueDate: e.target.value || null })}
+                className="h-9 w-40"
+              />
+            </div>
+          </fieldset>
 
           {scheduled && !draft.isAllDay ? (
             <AlertsField
@@ -553,6 +654,11 @@ export function TaskEditor({ request, onClose }: { request: EditorRequest; onClo
                   }}
                 >
                   <Trash2 data-icon="inline-start" /> Delete
+                </Button>
+              ) : null}
+              {editing ? (
+                <Button type="button" variant="ghost" onClick={duplicate}>
+                  <Copy data-icon="inline-start" /> Duplicate
                 </Button>
               ) : null}
               {editing && editing.date !== null && !editing.isAllDay && !editing.completedAt ? (

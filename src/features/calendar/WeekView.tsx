@@ -124,6 +124,7 @@ export function WeekView() {
                       key={task.id}
                       task={task}
                       timeFormat={settings.timeFormat}
+                      today={today}
                       onOpen={editor.openEdit}
                       onToggle={actions.toggleComplete}
                     />
