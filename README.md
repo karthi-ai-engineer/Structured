@@ -1,6 +1,38 @@
+<div align="center">
+
+<img src="public/icons/icon-192.png" alt="Structured app icon" width="88">
+
 # Structured
 
-![CI](https://github.com/karthi-ai-engineer/Structured/actions/workflows/ci.yml/badge.svg)
+### Your whole day on one colored timeline.<br>Plan it, focus on it, and let an AI assistant plan it with you over MCP.
+
+<p>
+  <a href="https://github.com/karthi-ai-engineer/Structured/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/karthi-ai-engineer/Structured/ci.yml?branch=main&style=for-the-badge&label=CI&logo=githubactions&logoColor=white"></a>
+  <a href="https://github.com/karthi-ai-engineer/Structured/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/karthi-ai-engineer/Structured?style=for-the-badge&color=FF6B6B&label=Release"></a>
+  <img alt="React 19" src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black">
+  <img alt="TypeScript strict" src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white">
+  <img alt="Supabase: Postgres and Realtime" src="https://img.shields.io/badge/Supabase-Postgres_%C2%B7_Realtime-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white">
+  <img alt="MCP server" src="https://img.shields.io/badge/MCP-server-111111?style=for-the-badge&logo=modelcontextprotocol&logoColor=white">
+  <img alt="PWA: installable" src="https://img.shields.io/badge/PWA-installable-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white">
+  <img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-2EA44F?style=for-the-badge">
+</p>
+
+**[📸 Screenshots](#screenshots)** · **[✨ Features](#features)** · **[🔌 Connect Claude](#connect-claude)** · **[🛠 Tech stack](#tech-stack)** · **[🚀 Local setup](#local-setup)**
+
+</div>
+
+<br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/today-dark.png">
+  <img src="docs/images/today-light.png" alt="Structured day view: a colored timeline of tasks from Rise and Shine to Gym, a current-time line, the energy badge at 27/30, and the inbox on the right" width="100%">
+</picture>
+
+<br>
+
+| 🗓 **Day · Week · Month** | 🎯 **Focus & energy** | 🔌 **MCP server** | 📱 **Web · PWA · Android** |
+|:---:|:---:|:---:|:---:|
+| one colored timeline with drag and drop | a focus timer and a daily energy limit | an assistant reads and plans your day, with undo | one codebase; the Android app is next |
 
 A personal visual day planner and work tracker, inspired by the Structured app. The whole day is one colored timeline. Goals turn into scheduled blocks, and focus time is tracked against them. A Claude connector (a remote MCP server) lets Claude read and plan the day.
 
@@ -11,6 +43,20 @@ One codebase serves three surfaces:
 - **MCP server** for Claude (web, desktop, mobile and Claude Code)
 
 It is a single-user app that runs entirely on free tiers, built phase by phase from [`PLAN.md`](PLAN.md).
+
+## Screenshots
+
+| Week | Month |
+|:---:|:---:|
+| <img src="docs/images/week.png" alt="Week view: seven day columns, each with its tasks and energy badge" width="100%"> | <img src="docs/images/month.png" alt="Month view: a calendar grid with each day's tasks as colored dots" width="100%"> |
+
+<p align="center">
+  <img src="docs/images/phone-light.png" alt="Phone layout, light theme: the day timeline with bottom tabs and a floating add button" width="260">
+  &nbsp;&nbsp;
+  <img src="docs/images/phone-dark.png" alt="Phone layout, dark theme: the same day timeline" width="260">
+  <br>
+  <sub>Phone layout in light and dark. Screenshots show sample tasks.</sub>
+</p>
 
 ## Status
 
@@ -28,38 +74,38 @@ It is a single-user app that runs entirely on free tiers, built phase by phase f
 | 0. Foundation | Scaffold, database schema, time-zone core, CI/CD, "DB connected" page | Done (`v0.0.1`) |
 | 1. Web MVP | Day timeline, task editor, inbox, week strip, realtime sync, themes, settings | Done (`v0.1.0`) |
 | 2. MCP server | "Claude plans my day": read and write tools, dry runs, undo by batch | Done (`v0.2.0`) |
-| 3. Structured parity | Recurring tasks, drag and drop, week and month views, replan, energy monitor, focus mode, alerts, quick add | Done; ships as `v0.3.0` |
+| 3. Structured parity | Recurring tasks, drag and drop, week and month views, replan, energy monitor, focus mode, alerts, quick add | Done (`v0.3.0`) |
 | 4. Android APK | Capacitor app, native notifications, APK built by GitHub Actions | Next |
 | 5. Work tracking | Goals with progress and pace, focus logs, stats, daily and weekly reviews | Planned |
 | 6. Extras | Web Push, offline write queue, calendar-grid view | Planned |
 
-## Planned features
-Grouped as in [`PLAN.md`](PLAN.md) §3. Nothing below exists yet except the foundation; the phase says when it lands.
+## Features
+Grouped as in [`PLAN.md`](PLAN.md) §3. ✅ is live today (Phases 0–3); 🔜 is planned, and the phase says when it lands.
 
 **Tasks and timeline**
-- Day timeline of colored task pills with icons, time ranges, a current-time line and a round check button (Phase 1)
-- Task editor: title, date, time, duration, color, icon, subtasks and notes; all-day tasks; an inbox for undated tasks (Phase 1)
-- Free-time gaps, overlap warnings, drag to move and resize, inbox-to-timeline drag (Phase 3)
-- Recurring tasks with "this / this and future / all" edits, week and month views, replan for missed tasks (Phase 3)
-- Natural-language quick add (`Gym tomorrow 7am 1h #health`), icon and color suggestions, search, undo, priorities and due dates (Phase 3)
+- ✅ Day timeline of colored task pills with icons, time ranges, a current-time line and a round check button (Phase 1)
+- ✅ Task editor: title, date, time, duration, color, icon, subtasks and notes; all-day tasks; an inbox for undated tasks (Phase 1)
+- ✅ Free-time gaps, overlap warnings, drag to move and resize, inbox-to-timeline drag (Phase 3)
+- ✅ Recurring tasks with "this / this and future / all" edits, week and month views, replan for missed tasks (Phase 3)
+- ✅ Natural-language quick add (`Gym tomorrow 7am 1h #health`), icon and color suggestions, search, undo, priorities and due dates (Phase 3)
 
 **Focus, energy and notifications**
-- Focus mode with focus/break intervals, and an energy monitor with a daily limit (Phase 3)
-- Per-task alerts: desktop notifications (Phase 3) and Android notifications that fire with the app closed (Phase 4)
+- ✅ Focus mode with focus/break intervals, and an energy monitor with a daily limit (Phase 3)
+- ✅ Per-task alerts: desktop notifications (Phase 3); 🔜 Android notifications that fire with the app closed (Phase 4)
 
 **Work tracking** (beyond Structured)
-- Goals with measurable targets, linked tasks, progress and a pace indicator (Phase 5)
-- Logged focus sessions for planned-versus-actual stats, a stats dashboard, daily shutdown and weekly reviews (Phase 5)
+- 🔜 Goals with measurable targets, linked tasks, progress and a pace indicator (Phase 5)
+- 🔜 Logged focus sessions for planned-versus-actual stats, a stats dashboard, daily shutdown and weekly reviews (Phase 5)
 
 **Platform**
-- No login: the app opens straight to the timeline (see "No login yet" below)
-- Realtime sync between devices, light and dark themes, responsive mobile and desktop layouts (Phase 1)
-- Keyboard shortcuts and a command palette, PWA install with an offline read cache, nightly database backup (Phase 3)
+- ✅ No login: the app opens straight to the timeline (see "No login yet" below)
+- ✅ Realtime sync between devices, light and dark themes, responsive mobile and desktop layouts (Phase 1)
+- ✅ Keyboard shortcuts and a command palette, PWA install with an offline read cache, nightly database backup (Phase 3)
 
 **Claude (MCP)**
-- A stateless remote MCP server with read tools (schedule, inbox, free slots, goals, stats) and write tools (create, move, complete, delete) (Phase 2)
-- Dry-run validation, and every Claude write tagged with a batch ID that can be undone (Phase 2)
-- Prompts such as `plan_day`, `replan_overdue`, `weekly_review` and `break_down_goal` (Phases 2 and 5)
+- ✅ A stateless remote MCP server with read tools (schedule, inbox, free slots, goals, stats) and write tools (create, move, complete, delete) (Phase 2)
+- ✅ Dry-run validation, and every Claude write tagged with a batch ID that can be undone (Phase 2)
+- ✅ Prompts `plan_day` and `replan_overdue` (Phase 2); 🔜 `weekly_review` and `break_down_goal` (Phase 5)
 
 Deferred for now: calendar sync, in-app AI, home-screen widgets, login/SSO.
 
@@ -89,7 +135,7 @@ Claude shows the plan and asks before writing anything. Every change it makes re
 | Web app | React 19, Vite 8, Tailwind CSS v4, shadcn/ui (Radix), lucide icons |
 | Dates | `date-fns` and `@date-fns/tz`, behind one tested module (`src/core/dates.ts`) |
 | Database | Supabase: Postgres and Realtime, schema managed with the Supabase CLI |
-| Hosting | Vercel (Hobby): the static app now, serverless functions for the MCP server from Phase 2 |
+| Hosting | Vercel (Hobby): the static app, plus serverless functions for the MCP server |
 | Android | Capacitor (Phase 4) |
 | Tests | Vitest (unit, in CI), opt-in integration tests against the real database |
 | CI/CD | GitHub Actions: the `ci-verify` check on every push and PR, production deploys from `main`, CodeQL, Dependabot |
@@ -177,4 +223,4 @@ Structured is a personal, single-user app with no login, by design. The database
 
 ## License
 
-No license has been chosen yet, so all rights are reserved.
+[MIT License](LICENSE).
