@@ -22,44 +22,14 @@
   - **Secrets:** `BACKUP_PASSPHRASE` is new (`.env.local`, Vercel development and GitHub).
   - **Owner step, open:** the nightly backup needs the GitHub secret `SUPABASE_DB_URL`. Set it with `node scripts/lib/db-url.mjs | gh secret set SUPABASE_DB_URL`, then run `gh workflow run backup.yml` once. The unused secrets `SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD` can be deleted.
   - **Owner check:** a week of daily use (the master plan's "done when").
-- **Next: Phase 4 (Android APK)** on a new branch `phase-4-android` from `main`. Scope: master `PLAN.md` §14 "Phase 4".
-- **Phase 2 (Claude connector, MCP server): SHIPPED** as `v0.2.0`.
-  - Merged into `phase-2-mcp`: PRs #17 and #18 (with 12 code review fixes), plus the release-prep PR.
-  - Then the release PR into `main`, the production deploy, and a live check of the endpoint through the MCP client.
-  - Epic #14 and milestone "Phase 2: MCP server" are closed. Verified in `docs/phases/phase-2/VERIFICATION.md`; changes are in `CHANGELOG.md`.
-  - **Owner step:** add the connector in Claude with the URL `PROD_URL` + `/api/mcp/` + `MCP_SECRET` (both in `.env.local`). See README, "Connect Claude".
-- **Phase 3 (Structured parity): IN PROGRESS** on `phase-3-parity`.
-  - Epic #22, milestone "Phase 3: Structured parity". There is one `feat/phase-3-wp<n>-…` PR per work package into `phase-3-parity`, each with a code review (verdict comments on the PR).
-  - **Merged:**
-    - WP1, recurring tasks (#24): five review rounds, all fixed
-    - WP2, timeline interactions (#26)
-    - WP3, week and month views and Replan (#28)
-    - WP4, energy monitor, focus mode and alerts (#30)
-    - WP5, quick add, suggestions, search, undo, duplicate, priority and due date (#32)
-  - **WP6, command palette, installable app with an offline cache, nightly backup and code splitting:** PR open from `feat/phase-3-wp6-pwa`.
-    - New secret `BACKUP_PASSPHRASE`: it is in `.env.local`, the Vercel development env and the GitHub secrets.
-    - The backup also needs the GitHub secret `SUPABASE_DB_URL` (owner step: `node scripts/lib/db-url.mjs | gh secret set SUPABASE_DB_URL`).
-    - The GitHub secrets `SUPABASE_PROJECT_REF` and `SUPABASE_DB_PASSWORD`, set during WP6, are no longer used and can be deleted.
-  - **Migrations `0003` to `0008` are applied.** `npm run db:migrations` shows local = remote.
-  - **Next:**
-    - the release PR `phase-3-parity` → `main` as `v0.3.0`
-  - Dev log: `docs/phases/phase-3/DEVLOG.md`.
-- **Phase 2 (Claude connector, MCP server): SHIPPED** as `v0.2.0`.
-  - Merged into `phase-2-mcp`: PRs #17 and #18 (with 12 code review fixes), plus the release-prep PR.
-  - Then the release PR into `main`, the production deploy, and a live check of the endpoint through the MCP client.
-  - Epic #14 and milestone "Phase 2: MCP server" are closed. Verified in `docs/phases/phase-2/VERIFICATION.md`; changes are in `CHANGELOG.md`.
-  - **Owner step:** add the connector in Claude with the URL `PROD_URL` + `/api/mcp/` + `MCP_SECRET` (both in `.env.local`). See README, "Connect Claude".
-- **Phase 3 (Structured parity): IN PROGRESS** on `phase-3-parity`.
-  - Epic #22, milestone "Phase 3: Structured parity".
-  - Six work packages, one `feat/phase-3-wp<n>-…` PR each into `phase-3-parity` (the epic lists them).
-  - **WP1, recurring tasks:** PR open from `feat/phase-3-wp1-recurring`.
-    - Migration `0003_recurrence` is applied.
-    - The defaults "Rise and Shine" / "Wind Down" are already seeded in the database (`settings.seeded_at` is set).
-  - **Next:** merge WP1 after review, then WP2 (timeline interactions: gaps, overlap warnings, drag to move and resize).
-  - Dev log: `docs/phases/phase-3/DEVLOG.md`.
+- **Phase 4 (Android APK): ON HOLD** (decided 2026-10-23). Resume later on a new branch `phase-4-android` from `main`; scope in `PLAN.md` §14 "Phase 4".
+- **Now: a new idea on the branch `idea-sandbox`** (from `main` at `v0.3.0` plus the README PRs #38 and #39).
+  - The idea is still to be described by the owner. Rename the branch to fit it with `git branch -m idea-<slug>`, then `git push origin -u idea-<slug>` and `git push origin --delete idea-sandbox`.
+  - Work goes into `idea-sandbox` through `feat/…` PRs, like a phase. It reaches `main` (and production) only through a reviewed PR.
+  - Resume: `git fetch && git switch idea-sandbox && git pull --ff-only`, then the session-start ritual in `CLAUDE.md`.
 - **Phase 1 (Web MVP): SHIPPED** as `v0.1.0`. PRs #7, #9 and #11 went into `phase-1-web-mvp`, then the release PR into `main`; the deploy workflow deployed production. Epic #5 and milestone "Phase 1: Web MVP" are closed. Verified in `docs/phases/phase-1/VERIFICATION.md`, and changes are listed in `CHANGELOG.md`.
 - **Phase 0 (Foundation): SHIPPED** as `v0.0.1` (PR #2, fix PR #4).
-- **Last updated:** 2026-10-01 (Phase 3 shipped)
+- **Last updated:** 2026-10-23 (Phase 4 on hold; branch `idea-sandbox` created)
 - **Process from Phase 1 (decided 2026-09-30): lean.** The owner found the multi-agent pipeline far too slow for the work. From now on:
   - Build directly in the session: one issue plus one `feat/…` PR per work package, each reviewed by at most one reviewer agent.
   - Run one QA pass per phase, then the release PR, merge and release.
