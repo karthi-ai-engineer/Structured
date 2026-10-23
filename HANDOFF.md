@@ -25,7 +25,7 @@
 - **Phase 4 (Android APK): ON HOLD** (decided 2026-10-23). Resume later on a new branch `phase-4-android` from `main`; scope in `PLAN.md` §14 "Phase 4".
 - **Now: Life OS on the branch `idea-life-os`** (from `main` at `v0.3.0`). Plan: `docs/life-os/PLAN.md`.
   - A device agent records what was actually done (apps, window titles, sites, idle, calls, lock and sleep) into Supabase; the web app shows the day, the week and planned versus actual; Claude reads it through MCP.
-  - Epic #42, milestone "Life OS L1: Windows agent" (L1 now covers both agents).
+  - Epic #42, milestone "Life OS L1: device agents".
   - **Two tracks in parallel** (`docs/life-os/PLAN.md` §4): `life-os-windows` (the C# laptop agent, built at the office) and `life-os-android` (the Kotlin phone agent, built at home with the phone). Both merge into `idea-life-os` through PRs.
   - **Next:** WP1, the shared database (`0009_activity`) on `idea-life-os`; then `git merge idea-life-os` into both track branches.
   - Work reaches `main` (and production) only through a reviewed PR.
