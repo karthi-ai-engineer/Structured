@@ -25,9 +25,11 @@
 - **Phase 4 (Android APK): ON HOLD** (decided 2026-10-23). Resume later on a new branch `phase-4-android` from `main`; scope in `PLAN.md` §14 "Phase 4".
 - **Now: Life OS on the branch `idea-life-os`** (from `main` at `v0.3.0`). Plan: `docs/life-os/PLAN.md`.
   - A device agent records what was actually done (apps, window titles, sites, idle, calls, lock and sleep) into Supabase; the web app shows the day, the week and planned versus actual; Claude reads it through MCP.
-  - Phase L1 (Windows agent and data) is next: WP1 migration `0009_activity`, WP2 the C# agent in `agents/windows/`, WP3 the CI build of the `.exe`.
-  - Work goes into `idea-life-os` through `feat/…` PRs. It reaches `main` (and production) only through a reviewed PR.
-  - Resume: `git fetch && git switch idea-life-os && git pull --ff-only`, then the session-start ritual in `CLAUDE.md`.
+  - Epic #42, milestone "Life OS L1: Windows agent" (L1 now covers both agents).
+  - **Two tracks in parallel** (`docs/life-os/PLAN.md` §4): `life-os-windows` (the C# laptop agent, built at the office) and `life-os-android` (the Kotlin phone agent, built at home with the phone). Both merge into `idea-life-os` through PRs.
+  - **Next:** WP1, the shared database (`0009_activity`) on `idea-life-os`; then `git merge idea-life-os` into both track branches.
+  - Work reaches `main` (and production) only through a reviewed PR.
+  - Resume: `git fetch && git switch <idea-life-os | life-os-windows | life-os-android> && git pull --ff-only`, then the session-start ritual in `CLAUDE.md`.
 - **Phase 1 (Web MVP): SHIPPED** as `v0.1.0`. PRs #7, #9 and #11 went into `phase-1-web-mvp`, then the release PR into `main`; the deploy workflow deployed production. Epic #5 and milestone "Phase 1: Web MVP" are closed. Verified in `docs/phases/phase-1/VERIFICATION.md`, and changes are listed in `CHANGELOG.md`.
 - **Phase 0 (Foundation): SHIPPED** as `v0.0.1` (PR #2, fix PR #4).
 - **Last updated:** 2026-10-23 (Life OS planned on `idea-life-os`; Phase 4 on hold)

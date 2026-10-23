@@ -54,11 +54,24 @@ Office laptop, phones (later)─┘                                       ─▶
 
 ## 4. Phases
 
-### L1: Windows agent and data (this laptop)
-- [ ] WP1: migration `0009_activity` (`devices`, `activity_events`), types, repo functions
-- [ ] WP2: the Windows agent: foreground and title hooks, idle, lock and sleep, browser URL, media, mic and camera, the local queue and upload, tray icon, autostart
-- [ ] WP3: CI build of the agent `.exe` and a release asset; install guide in the README
-- **Done when:** the agent runs on this laptop for a day and every switch, break and call is in the database.
+### Branches: two tracks in parallel
+The owner builds the laptop agent at the office and the phone agent at home (the phone is hard to use at the office). Each track has its own branch, and each merges into `idea-life-os` through PRs:
+
+| Branch | Where | Holds |
+|---|---|---|
+| `idea-life-os` | both | the integration branch: plan, database, web screens |
+| `life-os-windows` | office laptop | `agents/windows/` (C#) and its CI build |
+| `life-os-android` | home, with the phone | `agents/android/` (Kotlin) and its CI build |
+
+- The agents live in separate folders, so the tracks never conflict.
+- **The database comes first** (WP1, on `idea-life-os`): both agents write to the same tables. After it merges, run `git merge idea-life-os` on each track branch to pick it up.
+- Switching machines: commit and push the track branch, then on the other machine `git fetch && git switch <branch> && git pull --ff-only`.
+
+### L1: Agents and data
+- [ ] WP1 (`idea-life-os`): migration `0009_activity` (`devices`, `activity_events`), types, repo functions
+- [ ] WP2 (`life-os-windows`): the Windows agent: foreground and title hooks, idle, lock and sleep, browser URL, media, mic and camera, the local queue and upload, tray icon, autostart; CI builds the `.exe`
+- [ ] WP3 (`life-os-android`): the Android agent (native Kotlin): app usage events (`UsageStatsManager`), screen on and off, calls, a background upload worker (WorkManager), the usage-access permission screen; CI builds the APK
+- **Done when:** both agents run for a day and every app switch, break and call from the laptop and the phone is in the database.
 
 ### L2: Activity screens
 - [ ] Day timeline: spans by device, active, idle and calls, top apps and sites
@@ -73,8 +86,7 @@ Office laptop, phones (later)─┘                                       ─▶
 - [ ] Daily rollups and the 90-day retention
 
 ### L4: More devices
-- [ ] Android agent (personal phones, office phone)
-- [ ] Agent on the office laptop
+- [ ] The agent on the other laptop and the office phone (check IT policy first)
 - [ ] One merged timeline across devices
 
 ## 5. Open points
